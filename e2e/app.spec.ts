@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const consoleErrors: string[] = [];
 
@@ -34,6 +34,15 @@ async function recordOn(page: Page) {
 
 async function tapKey(page: Page, midi: number) {
   await page.locator(`.key[data-midi="${midi}"]`).dispatchEvent('pointerdown');
+}
+
+async function longPress(locator: Locator) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('Could not long-press hidden element');
+  const point = { pointerId: 1, pointerType: 'touch', clientX: box.x + box.width / 2, clientY: box.y + box.height / 2 };
+  await locator.dispatchEvent('pointerdown', point);
+  await locator.page().waitForTimeout(650);
+  await locator.dispatchEvent('pointerup', point);
 }
 
 test('loads with valid PWA metadata at iPhone width', async ({ page }) => {
@@ -151,8 +160,11 @@ test('single-note layer: Record ON keys insert notes, editing and undo/redo work
   await page.getByTestId('redo').click();
   await expect(page.locator('.stepper-label', { hasText: 'length' })).toContainText('1.5 beats');
 
-  // Delete then undo brings it back
-  await page.getByTestId('delete-event').click();
+  // Delete is contextual: hold the block, then choose Delete.
+  await expect(page.getByTestId('delete-event')).toHaveCount(0);
+  await longPress(page.locator('.block.note').nth(2));
+  await expect(page.getByTestId('context-delete-event')).toBeVisible();
+  await page.getByTestId('context-delete-event').click();
   await expect(page.locator('.block.note')).toHaveCount(2);
   await page.getByTestId('undo').click();
   await expect(page.locator('.block.note')).toHaveCount(3);
@@ -236,7 +248,6 @@ test('strummed chord layer: seed note → minor chord, strings, strum grid, play
   await expect(page.locator('.key[data-midi="50"]')).not.toHaveClass(/dim/); // D
   // Dimmed keys still play (Record ON -> still record).
   await recordOn(page);
-  await page.getByTestId('deselect').click();
   await tapKey(page, 49);
   await expect(page.locator('.block.chord')).toHaveCount(3);
   await page.getByTestId('undo').click();
@@ -278,27 +289,29 @@ test('picked chord layer: pattern edits and per-chord override', async ({ page }
   await expect(page.locator('.panel-label', { hasText: 'Picking (layer default)' })).toBeVisible();
 });
 
-test('timeline length follows content, including after deletes', async ({ page }) => {
+test('timeline slots are added explicitly and can stay empty', async ({ page }) => {
   await openGuitar(page);
   await addLayer(page, 'single');
   const bars = page.locator('.ruler .bar-label');
-  await expect(bars).toHaveCount(1); // empty song = one usable bar
-  await recordOn(page);
-  await tapKey(page, 48); // bar 1
-  await expect(bars).toHaveCount(2);
-  // Move the cursor to the last slot of bar 2 and add there: spills into bar 3.
-  await page.getByTestId('deselect').click();
-  await page.locator('.timeline-inner').click({ position: { x: 224 * 2 - 10, y: 100 } });
-  await tapKey(page, 50);
-  await expect(bars).toHaveCount(4);
-  // Delete the trailing note: bars 3–4 disappear.
-  await page.locator('.block.note').nth(1).click();
-  await page.getByTestId('delete-event').click();
-  await expect(bars).toHaveCount(2);
-  await page.locator('.block.note').first().click();
-  await page.getByTestId('delete-event').click();
   await expect(bars).toHaveCount(1);
-  await expect(page.locator('.block')).toHaveCount(0);
+  await recordOn(page);
+
+  await tapKey(page, 48); // material in slot 1 does not create slot 2
+  await expect(bars).toHaveCount(1);
+
+  await page.getByTestId('add-slot').click();
+  await expect(bars).toHaveCount(2);
+  await tapKey(page, 50); // Add Slot moves the cursor to the new slot
+  await expect(page.locator('.block.note')).toHaveCount(2);
+  await expect(bars).toHaveCount(2);
+
+  // An explicitly added empty slot persists even when trailing material is deleted.
+  await page.getByTestId('add-slot').click();
+  await expect(bars).toHaveCount(3);
+  await longPress(page.locator('.block.note').nth(1));
+  await page.getByTestId('context-delete-event').click();
+  await expect(page.locator('.block.note')).toHaveCount(1);
+  await expect(bars).toHaveCount(3);
 });
 
 test('song persists across reload and home shows layers', async ({ page }) => {
