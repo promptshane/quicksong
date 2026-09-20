@@ -33,7 +33,6 @@ export function LayerEditor({ layerId }: { layerId: string }) {
   const selectedId = useStore((s) => s.selectedEventId);
   const cursor = useStore((s) => s.cursorBeat);
   const setView = useStore((s) => s.setView);
-  const select = useStore((s) => s.select);
   const undo = useStore((s) => s.undo);
   const redo = useStore((s) => s.redo);
   const canUndo = useStore(selectCanUndo);
