@@ -14,6 +14,8 @@ All instrument layers ultimately follow these shared settings.
 
 The key may be selected manually, but QuickSong should also be able to infer likely keys progressively from the notes/chords the user creates. A single hummed note is not enough to uniquely determine a key, so confidence should increase as more musical information is added.
 
+For the first UI, **Key can default to Auto** and become more confident as the user adds material. The user can override it manually at any time.
+
 ## 2. Instruments
 
 QuickSong will initially support five core instruments:
@@ -60,14 +62,23 @@ Track-level volume should remain separate from note/chord velocity.
 
 ### Humming / Pitch Input
 
-QuickSong should support using the user's voice as a fast pitch-entry method.
+QuickSong should support using the user's voice as a fast musical input method.
 
-When the user hums or sings a pitch:
+When the user hums or sings, V1 should attempt to capture:
 
-1. Detect the nearest musical note.
-2. Detect the likely octave as well as the note name.
-3. Snap playback to the detected pitch.
-4. Allow the user to easily move the result up or down in pitch/octave if the detected register is not what they intended.
+1. **Pitch**
+2. **Likely octave**
+3. **Rhythm / onset timing**
+4. **Duration**
+
+The detected performance should be snapped into editable musical events rather than treated as raw recorded audio.
+
+After capture, the user should be able to:
+
+- hear the detected result immediately;
+- move a note up or down in pitch/octave;
+- adjust timing or duration if detection was imperfect;
+- undo or redo edits.
 
 A hummed note can then be used as:
 
@@ -78,6 +89,18 @@ A hummed note can then be used as:
 For fast chord creation, the user should be able to hum a note and then choose a simple chord interpretation such as **Major** or **Minor**. The user may instead build the chord note-by-note when the desired harmony is more specific.
 
 As notes and chords accumulate, QuickSong can progressively infer likely song keys and use that information to prioritize sensible next notes/chords.
+
+### Manual Note Input
+
+If the user does not want to hum:
+
+- provide a compact one-octave piano keyboard;
+- default around a useful middle register, approximately **C3–C4**;
+- include black keys;
+- provide simple octave up/down controls;
+- selecting a note inserts it into the current layer at the current position.
+
+The exact default octave can be refined during UI testing.
 
 ### Type 1 — Chords
 
@@ -162,6 +185,124 @@ For V1:
 
 ---
 
+## 4. V1 Mobile UI
+
+QuickSong is primarily designed around an iPhone-sized screen. The interface should stay sparse and contextual.
+
+### Home Screen
+
+The home screen shows the full song at a high level.
+
+**Top bar:**
+
+- **BPM** — upper left
+- **Time Signature** — centered
+- **Key** — upper right
+
+These controls should be compact and visually out of the way.
+
+**Main area:**
+
+Five vertically stacked instrument rows:
+
+- Drums
+- Guitar
+- Piano
+- Bass
+- Vocals
+
+Use small square instrument icons on the far left rather than large text labels.
+
+Each instrument row represents its place in the song timeline.
+
+- If an instrument has no layers, its row appears empty/grayed.
+- If it has one layer, that layer fills the available row area.
+- If it has multiple layers, the row visually divides to show them.
+- Clips/events should appear at their actual positions across the song timeline.
+
+For the first build:
+
+- Guitar is enabled.
+- Other instruments remain visible but locked/disabled.
+
+**Bottom bar:**
+
+- simple Play / Pause control centered at the bottom.
+
+### Instrument Focus
+
+Tapping an instrument should enter a focused instrument view.
+
+When Guitar is selected:
+
+- all other instrument editing UI disappears;
+- the screen becomes dedicated to Guitar;
+- existing guitar layers are shown;
+- the user can add, edit, or delete layers.
+
+A new guitar layer asks the user to choose:
+
+- **Type 1A — Full Chord / Strum**
+- **Type 1B — Picked Chord**
+- **Type 2 — Single Notes**
+
+### Layer Focus
+
+Once a layer is selected, the app should focus only on the controls relevant to that layer.
+
+Do not show chord controls, picking controls, strumming controls, and single-note controls all at once.
+
+The timeline should remain understandable, but controls should change contextually based on the active layer.
+
+Persistent layer-editing actions should include:
+
+- **Undo**
+- **Redo**
+- **Play / Pause**
+- **Record / Hum input**
+- **Manual note input**
+
+### Chord-Building Interaction
+
+A basic chord-building flow should feel fast:
+
+1. Hum or manually enter a note.
+2. QuickSong detects/inserts the note and octave.
+3. User can choose **Major** or **Minor** to build a basic chord around it.
+4. The resulting chord plays immediately.
+5. The user can:
+   - accept it;
+   - undo it;
+   - redo it;
+   - move individual chord tones;
+   - add another hummed/manual note;
+   - remove chord tones.
+
+The visual editor should make the individual notes inside the chord understandable without requiring formal music notation.
+
+---
+
+## 5. Audio / Playback Architecture
+
+QuickSong will run as a mobile web app / home-screen app on iPhone.
+
+The app does **not** need to stream audio continuously from GitHub.
+
+Recommended V1 approach:
+
+- use the browser's **Web Audio API** for playback;
+- bundle instrument audio assets with the app;
+- begin with **sample-based guitar sounds** rather than attempting to synthesize a realistic guitar from scratch;
+- use different samples/velocity layers only where they materially improve realism;
+- use the microphone for humming/pitch/rhythm/duration capture;
+- cache the core app and audio assets so the installed home-screen app can work offline after initial load.
+
+GitHub is the source repository and deployment source; playback occurs locally on the phone after the relevant assets are loaded.
+
+For V1, audio quality only needs to be convincing enough that the user clearly perceives the intended guitar performance and can judge the musical idea. It does not need to sound like a final studio recording.
+
+---
+
 ## Current Design Principle
 
 QuickSong is intended to make it extremely fast to turn a song heard in the user's head into something playable.
@@ -171,6 +312,7 @@ The interface should prefer:
 - visual musical controls over formal notation;
 - sensible defaults over configuration;
 - fast experimentation over technical precision;
-- progressive complexity, where deeper controls appear only when needed.
+- progressive complexity, where deeper controls appear only when needed;
+- one focused task/view at a time on mobile.
 
 V1 should feel substantially simpler than a DAW while still providing enough musical control to capture the song the user is hearing.
