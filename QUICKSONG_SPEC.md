@@ -14,7 +14,20 @@ All instrument layers ultimately follow these shared settings.
 
 The key may be selected manually, but QuickSong should also be able to infer likely keys progressively from the notes/chords the user creates. A single hummed note is not enough to uniquely determine a key, so confidence should increase as more musical information is added.
 
-For the first UI, **Key can default to Auto** and become more confident as the user adds material. The user can override it manually at any time.
+For the first UI, **Key can default to Auto** and become more confident as the user adds committed musical material. The user can override it manually at any time.
+
+### Possible-Key Guidance
+
+QuickSong should use committed notes/chords to maintain a set of still-plausible major/minor keys.
+
+On the manual keyboard:
+
+- notes that belong to at least one still-plausible key remain visually normal;
+- notes that belong to **none** of the still-plausible keys are visually grayed out as a soft warning;
+- grayed-out notes remain fully playable and recordable;
+- previewed notes and live humming while Record is off do **not** affect key inference.
+
+The purpose is guidance, not restriction: “this note is probably outside the song’s current tonal possibilities,” not “you cannot play this note.”
 
 ## 2. Instruments
 
@@ -71,11 +84,31 @@ When the user hums or sings, V1 should attempt to capture:
 3. **Rhythm / onset timing**
 4. **Duration**
 
-The detected performance should be snapped into editable musical events rather than treated as raw recorded audio.
+The detected performance should be interpreted as musical information rather than treated as raw recorded audio.
 
-After capture, the user should be able to:
+### Preview vs Record
 
-- hear the detected result immediately;
+Layer input has a single **Record** mode, which defaults to **OFF**.
+
+When Record is **OFF**:
+
+- humming/singing is detection-only;
+- the currently detected note lights the corresponding keyboard key **red** in real time;
+- humming does not create timeline events;
+- humming does not automatically play the detected synth note back, avoiding microphone/audio feedback;
+- the user can then tap the highlighted keyboard key to hear that pitch;
+- tapping keyboard keys auditions them only and does not add them to the layer.
+
+When Record is **ON**:
+
+- humming/singing creates editable musical events from detected pitch, octave, rhythm/onset, and duration;
+- tapping a keyboard key creates an event at the current timeline position.
+
+This separation between **exploring/hearing** and **committing/recording** is a core interaction rule.
+
+After a recorded capture, the user should be able to:
+
+- hear the committed result;
 - move a note up or down in pitch/octave;
 - adjust timing or duration if detection was imperfect;
 - undo or redo edits.
@@ -98,9 +131,13 @@ If the user does not want to hum:
 - default around a useful middle register, approximately **C3–C4**;
 - include black keys;
 - provide simple octave up/down controls;
-- selecting a note inserts it into the current layer at the current position.
+- while Record is OFF, tapping a key auditions the note only;
+- while Record is ON, tapping a key auditions it and records/inserts it at the current position;
+- when live humming detects a pitch with Record OFF, the matching key lights red.
 
 The exact default octave can be refined during UI testing.
+
+Dragging a keyboard note directly into the timeline is a possible future interaction, but is intentionally deferred until the Record workflow has been tested; it may be unnecessary if Record mode is sufficiently intuitive.
 
 ### Type 1 — Chords
 
@@ -219,6 +256,10 @@ Each instrument row represents its place in the song timeline.
 - If it has one layer, that layer fills the available row area.
 - If it has multiple layers, the row visually divides to show them.
 - Clips/events should appear at their actual positions across the song timeline.
+- Empty timeline length should not accumulate unnecessarily.
+- The visible/working timeline should dynamically shrink or grow based on content, generally ending at the **last event plus one empty bar**.
+- Deleting the last event(s) should allow unused trailing bars to disappear rather than leaving a confusing trail of empty bars.
+- There is no requirement to maintain a fixed four-bar minimum.
 
 For the first build:
 
@@ -259,18 +300,22 @@ Persistent layer-editing actions should include:
 - **Undo**
 - **Redo**
 - **Play / Pause**
-- **Record / Hum input**
+- **Record** toggle/state
+- **Hum input**
 - **Manual note input**
+
+Record should be **OFF by default**. The interface should make the current Record state obvious without making it visually dominant.
 
 ### Chord-Building Interaction
 
 A basic chord-building flow should feel fast:
 
-1. Hum or manually enter a note.
-2. QuickSong detects/inserts the note and octave.
-3. User can choose **Major** or **Minor** to build a basic chord around it.
-4. The resulting chord plays immediately.
-5. The user can:
+1. Preview a pitch by humming it or tapping the keyboard.
+2. When ready, enable Record and commit the desired note, or otherwise explicitly record it into the layer.
+3. QuickSong inserts the committed note and octave.
+4. User can choose **Major** or **Minor** to build a basic chord around it.
+5. The resulting chord plays immediately.
+6. The user can:
    - accept it;
    - undo it;
    - redo it;
