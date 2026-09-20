@@ -1,13 +1,22 @@
-import { useEffect, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { useTransport } from '../audio/transport';
 import { chordName, midiToName } from '../model/music';
 import { eighthBeats, snapToEighth, songBars, songBeats } from '../model/time';
 import type { AnyEvent, GuitarLayer, Song } from '../model/types';
-import { moveEvent } from '../state/actions';
+import { addTimelineSlot, deleteEvent, moveEvent } from '../state/actions';
 import { useStore } from '../state/store';
+import { Sheet } from './Sheet';
 
 const PX_PER_BAR = 224;
+const ADD_SLOT_WIDTH = 82;
 const DRAG_THRESHOLD_PX = 6;
+const LONG_PRESS_MS = 550;
 
 interface TimelineProps {
   song: Song;
@@ -20,7 +29,8 @@ function eventLabel(ev: AnyEvent): string {
 
 /**
  * Zoomed, horizontally scrollable timeline for one layer. Tap empty space to
- * set the cursor; tap a block to select it; drag a block to move it.
+ * set the cursor; tap a block to select it; drag a block to move it; hold a
+ * block to reveal deletion.
  */
 export function Timeline({ song, layer }: TimelineProps) {
   const selectedId = useStore((s) => s.selectedEventId);
@@ -29,12 +39,14 @@ export function Timeline({ song, layer }: TimelineProps) {
   const setCursor = useStore((s) => s.setCursor);
   const playhead = useTransport((s) => s.playheadBeat);
   const playing = useTransport((s) => s.playing);
+  const [deleteTarget, setDeleteTarget] = useState<AnyEvent | null>(null);
 
   const ts = song.timeSignature;
   const pxPerBeat = PX_PER_BAR / ts.beatsPerBar;
   const bars = songBars(song);
   const totalBeats = songBeats(song);
-  const width = bars * PX_PER_BAR;
+  const contentWidth = bars * PX_PER_BAR;
+  const width = contentWidth + ADD_SLOT_WIDTH;
   const step = eighthBeats(ts);
   const innerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -46,9 +58,9 @@ export function Timeline({ song, layer }: TimelineProps) {
     if (!el) return;
     const x = followBeat * pxPerBeat;
     const left = el.scrollLeft;
-    const width = el.clientWidth;
-    if (x < left + 16 || x > left + width - 48) {
-      el.scrollTo({ left: Math.max(0, x - width * 0.25), behavior: playing ? 'auto' : 'smooth' });
+    const viewportWidth = el.clientWidth;
+    if (x < left + 16 || x > left + viewportWidth - 48) {
+      el.scrollTo({ left: Math.max(0, x - viewportWidth * 0.25), behavior: playing ? 'auto' : 'smooth' });
     }
   }, [followBeat, pxPerBeat, playing]);
 
@@ -59,18 +71,48 @@ export function Timeline({ song, layer }: TimelineProps) {
   };
 
   const onLaneClick = (e: ReactMouseEvent) => {
-    if ((e.target as HTMLElement).closest('.block')) return;
+    if ((e.target as HTMLElement).closest('.block, .add-slot')) return;
     const beat = snapToEighth(beatAtClientX(e.clientX), ts);
     setCursor(Math.min(beat, totalBeats - step));
     select(null);
   };
 
-  const drag = useRef<{ id: string; startX: number; startBeat: number; moved: boolean; el: HTMLElement } | null>(null);
+  const drag = useRef<{
+    id: string;
+    startX: number;
+    startBeat: number;
+    moved: boolean;
+    longPressed: boolean;
+    timer: ReturnType<typeof setTimeout> | null;
+    el: HTMLElement;
+  } | null>(null);
+
+  const clearLongPressTimer = () => {
+    const d = drag.current;
+    if (d?.timer) clearTimeout(d.timer);
+    if (d) d.timer = null;
+  };
 
   const onBlockPointerDown = (e: ReactPointerEvent<HTMLDivElement>, ev: AnyEvent) => {
     e.stopPropagation();
     const el = e.currentTarget;
-    drag.current = { id: ev.id, startX: e.clientX, startBeat: ev.start, moved: false, el };
+    const pending = {
+      id: ev.id,
+      startX: e.clientX,
+      startBeat: ev.start,
+      moved: false,
+      longPressed: false,
+      timer: null as ReturnType<typeof setTimeout> | null,
+      el,
+    };
+    pending.timer = setTimeout(() => {
+      if (drag.current !== pending || pending.moved) return;
+      pending.longPressed = true;
+      select(ev.id);
+      setCursor(ev.start);
+      setDeleteTarget(ev);
+    }, LONG_PRESS_MS);
+    drag.current = pending;
     try {
       el.setPointerCapture(e.pointerId);
     } catch {
@@ -80,9 +122,10 @@ export function Timeline({ song, layer }: TimelineProps) {
 
   const onBlockPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     const d = drag.current;
-    if (!d) return;
+    if (!d || d.longPressed) return;
     const dx = e.clientX - d.startX;
     if (!d.moved && Math.abs(dx) < DRAG_THRESHOLD_PX) return;
+    clearLongPressTimer();
     d.moved = true;
     const beat = Math.max(0, snapToEighth(d.startBeat + dx / pxPerBeat, ts));
     d.el.style.left = `${beat * pxPerBeat}px`;
@@ -90,8 +133,9 @@ export function Timeline({ song, layer }: TimelineProps) {
 
   const onBlockPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     const d = drag.current;
+    clearLongPressTimer();
     drag.current = null;
-    if (!d) return;
+    if (!d || d.longPressed) return;
     if (d.moved) {
       const beat = Math.max(0, snapToEighth(d.startBeat + (e.clientX - d.startX) / pxPerBeat, ts));
       d.el.style.left = '';
@@ -103,6 +147,11 @@ export function Timeline({ song, layer }: TimelineProps) {
     }
   };
 
+  const onBlockPointerCancel = () => {
+    clearLongPressTimer();
+    drag.current = null;
+  };
+
   const gridLines = [];
   for (let b = 0; b < totalBeats; b += step) {
     const isBar = Math.abs(b % ts.beatsPerBar) < 1e-6;
@@ -112,40 +161,70 @@ export function Timeline({ song, layer }: TimelineProps) {
   }
 
   return (
-    <div className="timeline" data-testid="timeline" ref={scrollRef}>
-      <div className="timeline-inner" ref={innerRef} style={{ width, minWidth: '100%' }} onClick={onLaneClick}>
-        <div className="ruler">
-          {Array.from({ length: bars }, (_, i) => (
-            <span key={i} className="bar-label" style={{ left: i * PX_PER_BAR }}>
-              {i + 1}
-            </span>
-          ))}
+    <>
+      <div className="timeline" data-testid="timeline" ref={scrollRef}>
+        <div className="timeline-inner" ref={innerRef} style={{ width, minWidth: '100%' }} onClick={onLaneClick}>
+          <div className="ruler" style={{ width: contentWidth, right: 'auto' }}>
+            {Array.from({ length: bars }, (_, i) => (
+              <span key={i} className="bar-label" style={{ left: i * PX_PER_BAR }}>
+                {i + 1}
+              </span>
+            ))}
+          </div>
+          {gridLines}
+          <div className="lane" style={{ width: contentWidth, right: 'auto' }}>
+            {layer.events.map((ev) => (
+              <div
+                key={ev.id}
+                className={`block ${ev.kind} ${ev.id === selectedId ? 'selected' : ''} ${
+                  ev.kind === 'chord' && ev.quality === 'note' ? 'seed' : ''
+                }`}
+                style={{ left: ev.start * pxPerBeat, width: Math.max(18, ev.duration * pxPerBeat - 2) }}
+                onPointerDown={(e) => onBlockPointerDown(e, ev)}
+                onPointerMove={onBlockPointerMove}
+                onPointerUp={onBlockPointerUp}
+                onPointerCancel={onBlockPointerCancel}
+                data-event-id={ev.id}
+                role="button"
+                aria-label={eventLabel(ev)}
+              >
+                {eventLabel(ev)}
+                {ev.kind === 'chord' && ev.quality === 'note' && <small>tap Major/Minor</small>}
+              </div>
+            ))}
+          </div>
+          <div className="cursor" style={{ left: cursor * pxPerBeat }} />
+          {playing && <div className="playhead" style={{ left: playhead * pxPerBeat }} />}
+          <button
+            className="add-slot"
+            style={{ left: contentWidth + 8 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              addTimelineSlot();
+            }}
+            data-testid="add-slot"
+            aria-label="Add timeline slot"
+          >
+            <span>＋</span>
+            <small>Slot</small>
+          </button>
         </div>
-        {gridLines}
-        <div className="lane">
-          {layer.events.map((ev) => (
-            <div
-              key={ev.id}
-              className={`block ${ev.kind} ${ev.id === selectedId ? 'selected' : ''} ${
-                ev.kind === 'chord' && ev.quality === 'note' ? 'seed' : ''
-              }`}
-              style={{ left: ev.start * pxPerBeat, width: Math.max(18, ev.duration * pxPerBeat - 2) }}
-              onPointerDown={(e) => onBlockPointerDown(e, ev)}
-              onPointerMove={onBlockPointerMove}
-              onPointerUp={onBlockPointerUp}
-              onPointerCancel={() => (drag.current = null)}
-              data-event-id={ev.id}
-              role="button"
-              aria-label={eventLabel(ev)}
-            >
-              {eventLabel(ev)}
-              {ev.kind === 'chord' && ev.quality === 'note' && <small>tap Major/Minor</small>}
-            </div>
-          ))}
-        </div>
-        <div className="cursor" style={{ left: cursor * pxPerBeat }} />
-        {playing && <div className="playhead" style={{ left: playhead * pxPerBeat }} />}
       </div>
-    </div>
+
+      {deleteTarget && (
+        <Sheet title={`Delete ${eventLabel(deleteTarget)}?`} onClose={() => setDeleteTarget(null)}>
+          <button
+            className="btn danger wide"
+            onClick={() => {
+              deleteEvent(layer.id, deleteTarget.id);
+              setDeleteTarget(null);
+            }}
+            data-testid="context-delete-event"
+          >
+            Delete
+          </button>
+        </Sheet>
+      )}
+    </>
   );
 }
