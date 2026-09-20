@@ -44,8 +44,10 @@ export interface SegmenterOptions {
 }
 
 export const DEFAULT_SEGMENTER_OPTIONS: SegmenterOptions = {
-  minClarity: 0.88,
-  minRms: 0.012,
+  // Tuned for ordinary close-range iPhone humming. These remain above the
+  // detector floor so background noise does not immediately become notes.
+  minClarity: 0.78,
+  minRms: 0.004,
   pitchChangeSemitones: 0.6,
   pitchChangeFrames: 2,
   releaseSec: 0.09,
