@@ -28,8 +28,11 @@ function rmsOf(frame: Float32Array): number {
 /** McLeod Pitch Method via the `pitchy` package. Good for monophonic voice. */
 export function createMpmDetector(frameSize = 2048): PitchDetector {
   const mpm = Mpm.forFloat32Array(frameSize);
-  mpm.minVolumeDecibels = -40;
-  mpm.clarityThreshold = 0.85;
+  // iPhone raw microphone levels can be substantially quieter than desktop.
+  // Keep enough rejection for room noise, but allow normal humming rather
+  // than requiring the user to sing loudly into the phone.
+  mpm.minVolumeDecibels = -55;
+  mpm.clarityThreshold = 0.75;
   return {
     frameSize,
     analyse(frame, sampleRate) {
