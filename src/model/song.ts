@@ -186,3 +186,15 @@ export function pitchClassHistogram(song: Song): number[] {
   }
   return hist;
 }
+
+/** Pitch classes present in committed material (notes and sounding chord tones). */
+export function usedPitchClasses(song: Song): Set<number> {
+  const out = new Set<number>();
+  for (const layer of song.guitar.layers) {
+    for (const ev of layer.events) {
+      if (ev.kind === 'note') out.add(pitchClassOf(ev.midi));
+      else for (const { midi } of soundingNotes(ev.strings)) out.add(pitchClassOf(midi));
+    }
+  }
+  return out;
+}

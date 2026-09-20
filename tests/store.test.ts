@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createLayer, findLayer } from '../src/model/song';
+import { createLayer, findLayer, pitchClassHistogram } from '../src/model/song';
+import { songBars } from '../src/model/time';
 import type { StrumLayer } from '../src/model/types';
 import { useStore } from '../src/state/store';
 
@@ -8,6 +9,7 @@ import * as engine from '../src/audio/engine';
 engine.initAudioEngine(() => ({ noteOn() {}, allNotesOff() {} }));
 
 import {
+  auditionNote,
   changeEventDuration,
   deleteEvent,
   insertAtCursor,
@@ -117,5 +119,63 @@ describe('undo / redo', () => {
       [0, 2],
       [2, 4],
     ]);
+  });
+});
+
+describe('preview vs record', () => {
+  it('auditioning a note never touches the song, history or key inference', () => {
+    const layerId = addLayer('single');
+    const before = useStore.getState();
+    auditionNote(61);
+    auditionNote(66);
+    const after = useStore.getState();
+    expect(after.song).toBe(before.song);
+    expect(after.past).toBe(before.past);
+    expect(after.future).toBe(before.future);
+    expect(after.cursorBeat).toBe(before.cursorBeat);
+    expect(pitchClassHistogram(after.song)).toEqual(new Array(12).fill(0));
+    expect(findLayer(after.song, layerId)!.events).toHaveLength(0);
+  });
+
+  it('recording a key adds exactly one history entry', () => {
+    const layerId = addLayer('single');
+    const depth = useStore.getState().past.length;
+    insertAtCursor(layerId, 60);
+    expect(useStore.getState().past).toHaveLength(depth + 1);
+    expect(pitchClassHistogram(useStore.getState().song)[0]).toBe(1);
+  });
+
+  it('Record resets to OFF when the view changes', () => {
+    const layerId = addLayer('single');
+    useStore.getState().setRecording(true);
+    expect(useStore.getState().recording).toBe(true);
+    useStore.getState().setView({ name: 'guitar' });
+    expect(useStore.getState().recording).toBe(false);
+    useStore.getState().setView({ name: 'layer', layerId });
+    expect(useStore.getState().recording).toBe(false);
+  });
+});
+
+describe('timeline length follows content', () => {
+  it('shrinks after deleting trailing events and pulls the cursor back in', () => {
+    const layerId = addLayer('single');
+    expect(songBars(useStore.getState().song)).toBe(1);
+    insertAtCursor(layerId, 60); // beat 0 -> song is now 2 bars
+    expect(songBars(useStore.getState().song)).toBe(2);
+    useStore.getState().setCursor(7.5); // last slot of the empty bar
+    const id = insertAtCursor(layerId, 62)!; // spills into bar 3
+    expect(songBars(useStore.getState().song)).toBe(4);
+    expect(useStore.getState().cursorBeat).toBe(8.5);
+    deleteEvent(layerId, id);
+    expect(songBars(useStore.getState().song)).toBe(2);
+    expect(useStore.getState().cursorBeat).toBe(7.5); // pulled back inside the song
+    useStore.getState().undo();
+    expect(songBars(useStore.getState().song)).toBe(4);
+  });
+
+  it('never lets the cursor be set beyond the song', () => {
+    addLayer('single');
+    useStore.getState().setCursor(40);
+    expect(useStore.getState().cursorBeat).toBe(3.5); // one bar of 4/4, last eighth
   });
 });

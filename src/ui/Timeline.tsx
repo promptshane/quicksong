@@ -71,7 +71,11 @@ export function Timeline({ song, layer }: TimelineProps) {
     e.stopPropagation();
     const el = e.currentTarget;
     drag.current = { id: ev.id, startX: e.clientX, startBeat: ev.start, moved: false, el };
-    el.setPointerCapture(e.pointerId);
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      // Synthetic or already-released pointer: dragging still works via the element's own move/up handlers.
+    }
   };
 
   const onBlockPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -109,7 +113,7 @@ export function Timeline({ song, layer }: TimelineProps) {
 
   return (
     <div className="timeline" data-testid="timeline" ref={scrollRef}>
-      <div className="timeline-inner" ref={innerRef} style={{ width }} onClick={onLaneClick}>
+      <div className="timeline-inner" ref={innerRef} style={{ width, minWidth: '100%' }} onClick={onLaneClick}>
         <div className="ruler">
           {Array.from({ length: bars }, (_, i) => (
             <span key={i} className="bar-label" style={{ left: i * PX_PER_BAR }}>

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { createSong } from '../model/song';
+import { eighthBeats, songBeats } from '../model/time';
 import type { Song } from '../model/types';
 import { loadSong, saveSongDebounced } from './persistence';
 
@@ -19,6 +20,13 @@ interface StoreState {
   cursorBeat: number;
   /** MIDI number of the keyboard's lowest key (48 = C3). */
   keyboardBase: number;
+  /**
+   * Layer-input Record state. OFF = keyboard and humming only preview;
+   * ON = they commit events. Session-only: resets whenever the view changes
+   * and is never persisted, because accidental recording is worse than
+   * having to switch it on again.
+   */
+  recording: boolean;
 
   /**
    * Apply an editing action. `fn` receives the current song and returns the
@@ -34,6 +42,12 @@ interface StoreState {
   select: (eventId: string | null) => void;
   setCursor: (beat: number) => void;
   setKeyboardBase: (midi: number) => void;
+  setRecording: (on: boolean) => void;
+}
+
+/** Keep the cursor inside the (content-derived) song length. */
+function clampCursor(cursorBeat: number, song: Song): number {
+  return Math.max(0, Math.min(cursorBeat, songBeats(song) - eighthBeats(song.timeSignature)));
 }
 
 export const useStore = create<StoreState>((set, get) => ({
@@ -46,15 +60,17 @@ export const useStore = create<StoreState>((set, get) => ({
   selectedEventId: null,
   cursorBeat: 0,
   keyboardBase: 48,
+  recording: false,
 
   commit: (fn) => {
-    const { song, past } = get();
+    const { song, past, cursorBeat } = get();
     const next = fn(song);
     if (next === song) return;
     set({
       song: next,
       past: [...past.slice(-(HISTORY_LIMIT - 1)), song],
       future: [],
+      cursorBeat: clampCursor(cursorBeat, next),
     });
   },
 
@@ -64,20 +80,21 @@ export const useStore = create<StoreState>((set, get) => ({
     const { past, song, future } = get();
     if (past.length === 0) return;
     const previous = past[past.length - 1];
-    set({ song: previous, past: past.slice(0, -1), future: [song, ...future] });
+    set({ song: previous, past: past.slice(0, -1), future: [song, ...future], cursorBeat: clampCursor(get().cursorBeat, previous) });
   },
 
   redo: () => {
     const { past, song, future } = get();
     if (future.length === 0) return;
     const [next, ...rest] = future;
-    set({ song: next, past: [...past, song], future: rest });
+    set({ song: next, past: [...past, song], future: rest, cursorBeat: clampCursor(get().cursorBeat, next) });
   },
 
-  setView: (view) => set({ view, selectedEventId: null }),
+  setView: (view) => set({ view, selectedEventId: null, recording: false }),
   select: (selectedEventId) => set({ selectedEventId }),
-  setCursor: (cursorBeat) => set({ cursorBeat: Math.max(0, cursorBeat) }),
+  setCursor: (cursorBeat) => set({ cursorBeat: clampCursor(cursorBeat, get().song) }),
   setKeyboardBase: (keyboardBase) => set({ keyboardBase }),
+  setRecording: (recording) => set({ recording }),
 }));
 
 /** Load the saved song (if any) and start persisting changes. */

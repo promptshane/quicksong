@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderSong, resolvePickString } from '../src/audio/render';
-import { addEvent, applyTimeSignature, buildChord, createLayer, createNoteEvent, createSeedChord, createSong } from '../src/model/song';
+import { addEvent, applyTimeSignature, buildChord, createLayer, createNoteEvent, createSeedChord, createSong, removeEvent } from '../src/model/song';
 import { eighthsPerBar, songBars } from '../src/model/time';
 import type { PickedLayer, StrumLayer } from '../src/model/types';
 
@@ -86,12 +86,33 @@ describe('time signature changes', () => {
     expect((song.guitar.layers[1] as PickedLayer).pickPattern).toHaveLength(3);
   });
 
-  it('grows the song to fit events plus one spare bar', () => {
+  it('derives length from content: last event + one empty bar, min one bar', () => {
     let song = createSong();
     const layer = createLayer('single', song);
     song = { ...song, guitar: { layers: [layer] } };
-    expect(songBars(song)).toBe(4);
-    song = addEvent(song, layer.id, createNoteEvent(60, 30, 1));
-    expect(songBars(song)).toBe(9);
+    expect(songBars(song)).toBe(1); // empty song = one usable bar
+    const inBar1 = createNoteEvent(60, 2, 1);
+    song = addEvent(song, layer.id, inBar1);
+    expect(songBars(song)).toBe(2); // events only in bar 1 -> through bar 2
+    const endsAtBarLine = createNoteEvent(60, 3, 1); // ends exactly at beat 4
+    song = addEvent(song, layer.id, endsAtBarLine);
+    expect(songBars(song)).toBe(2);
+    const inBar3 = createNoteEvent(60, 9, 1);
+    song = addEvent(song, layer.id, inBar3);
+    expect(songBars(song)).toBe(4); // last event in bar 3 -> through bar 4
+    // Deleting trailing events shrinks the timeline again.
+    song = removeEvent(song, layer.id, inBar3.id);
+    expect(songBars(song)).toBe(2);
+    song = removeEvent(song, layer.id, endsAtBarLine.id);
+    song = removeEvent(song, layer.id, inBar1.id);
+    expect(songBars(song)).toBe(1);
+  });
+
+  it('respects the time signature when counting bars', () => {
+    let song = applyTimeSignature(createSong(), { beatsPerBar: 6, beatUnit: 8 });
+    const layer = createLayer('single', song);
+    song = { ...song, guitar: { layers: [layer] } };
+    song = addEvent(song, layer.id, createNoteEvent(60, 6.5, 1)); // bar 2
+    expect(songBars(song)).toBe(3);
   });
 });

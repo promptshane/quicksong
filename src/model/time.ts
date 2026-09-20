@@ -1,7 +1,6 @@
 import type { Song, TimeSignature } from './types';
 
 export const DEFAULT_TIME_SIGNATURE: TimeSignature = { beatsPerBar: 4, beatUnit: 4 };
-export const MIN_BARS = 4;
 
 export const TIME_SIGNATURES: TimeSignature[] = [
   { beatsPerBar: 4, beatUnit: 4 },
@@ -63,13 +62,14 @@ export function lastEventEnd(song: Song): number {
 }
 
 /**
- * Song length in bars: at least MIN_BARS, and always one empty bar after the
- * last event so there is room to keep adding.
+ * Song length in bars, derived purely from content: the bar containing the
+ * end of the last event, plus one empty bar to keep writing into. An empty
+ * song is one usable bar. Trailing bars disappear as events are deleted.
  */
 export function songBars(song: Song): number {
   const perBar = song.timeSignature.beatsPerBar;
-  const used = Math.ceil(lastEventEnd(song) / perBar + 1e-6);
-  return Math.max(MIN_BARS, used + 1);
+  const used = Math.ceil(lastEventEnd(song) / perBar - 1e-6);
+  return Math.max(0, used) + 1;
 }
 
 export function songBeats(song: Song): number {

@@ -806,9 +806,20 @@ input[type='range'] {
   font-size: 11px;
   touch-action: none;
 }
-.key:active,
-.key.pressed {
+.key.dim {
+  background: #a3a7ae;
+  color: #6b6f78;
+}
+.key:active {
   background: var(--accent);
+  color: var(--accent-text);
+}
+.key.live,
+.key.live:active {
+  background: var(--danger);
+  color: #fff;
+  border-color: #b91c1c;
+  font-weight: 700;
 }
 .key.black {
   position: absolute;
@@ -822,9 +833,19 @@ input[type='range'] {
   z-index: 2;
   font-size: 9px;
 }
-.key.black:active,
-.key.black.pressed {
+.key.black.dim {
+  background: #3a3d44;
+  color: #6b6f78;
+}
+.key.black:active {
   background: var(--accent-dim);
+  color: var(--accent);
+}
+.key.black.live,
+.key.black.live:active {
+  background: var(--danger);
+  color: #fff;
+  border-color: #b91c1c;
 }
 
 /* ---- editor bottom bar -------------------------------------------------- */
@@ -847,61 +868,94 @@ input[type='range'] {
   flex: 0 0 auto;
 }
 
-/* ---- hum overlay -------------------------------------------------------- */
+/* ---- hum status strip --------------------------------------------------- */
 
-.hum-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 30;
-  background: rgba(10, 11, 14, 0.96);
+.hum-status-bar {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 18px;
-  padding: 24px;
-  text-align: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-3);
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--text-dim);
+  flex-shrink: 0;
 }
-.hum-note {
-  font-size: 72px;
+.hum-status-bar.recording {
+  background: #3a1416;
+  color: #fecaca;
+}
+.hum-mode {
+  font-weight: 600;
+  color: var(--text);
+}
+.hum-status-bar.recording .hum-mode {
+  color: #fecaca;
+}
+.hum-live {
+  min-width: 34px;
   font-weight: 700;
-  line-height: 1;
-  min-height: 80px;
-}
-.hum-note.idle {
-  color: var(--text-faint);
-  font-size: 22px;
-  font-weight: 500;
+  font-size: 16px;
+  color: var(--danger);
+  font-variant-numeric: tabular-nums;
 }
 .hum-meter {
-  width: 200px;
-  height: 6px;
+  flex: 1;
+  height: 5px;
   border-radius: 3px;
-  background: var(--bg-3);
+  background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
+  display: block;
 }
-.hum-meter div {
+.hum-meter span {
+  display: block;
   height: 100%;
-  background: var(--accent);
+  background: var(--danger);
   transition: width 60ms linear;
 }
-.hum-status {
-  color: var(--text-dim);
-  font-size: 14px;
+.hum-count {
+  white-space: nowrap;
 }
 .hum-dot {
   display: inline-block;
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 999px;
   background: var(--danger);
-  margin-right: 6px;
   animation: pulse 1s infinite;
+  flex-shrink: 0;
 }
 @keyframes pulse {
   50% {
     opacity: 0.3;
   }
+}
+
+/* ---- record toggle ------------------------------------------------------ */
+
+.btn.rec {
+  gap: 8px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-dim);
+}
+.btn.rec .rec-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid var(--danger);
+  box-sizing: border-box;
+}
+.btn.rec.on {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+  font-weight: 700;
+}
+.btn.rec.on .rec-dot {
+  background: #fff;
+  border-color: #fff;
+  animation: pulse 1s infinite;
 }
 
 .toast {

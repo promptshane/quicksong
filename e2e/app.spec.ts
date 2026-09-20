@@ -27,6 +27,15 @@ async function addLayer(page: Page, type: 'strum' | 'picked' | 'single') {
   await expect(page.locator(`[data-screen="layer"][data-layer-type="${type}"]`)).toBeVisible();
 }
 
+async function recordOn(page: Page) {
+  await page.getByTestId('record').click();
+  await expect(page.getByTestId('record')).toHaveAttribute('aria-pressed', 'true');
+}
+
+async function tapKey(page: Page, midi: number) {
+  await page.locator(`.key[data-midi="${midi}"]`).dispatchEvent('pointerdown');
+}
+
 test('loads with valid PWA metadata at iPhone width', async ({ page }) => {
   await expect(page).toHaveTitle('QuickSong');
   expect(await page.locator('meta[name="apple-mobile-web-app-capable"]').getAttribute('content')).toBe('yes');
@@ -82,13 +91,47 @@ test('locked instruments do not open an editor', async ({ page }) => {
   await expect(page.locator('[data-screen="home"]')).toBeVisible();
 });
 
-test('single-note layer: keyboard inserts notes, editing and undo/redo work', async ({ page }) => {
+test('Record OFF: keys only preview — no events, no history, no key inference', async ({ page }) => {
   await openGuitar(page);
   await addLayer(page, 'single');
+  await expect(page.getByTestId('record')).toHaveAttribute('aria-pressed', 'false');
 
-  await page.locator('.key[data-midi="48"]').dispatchEvent('pointerdown');
-  await page.locator('.key[data-midi="52"]').dispatchEvent('pointerdown');
-  await page.locator('.key[data-midi="55"]').dispatchEvent('pointerdown');
+  await tapKey(page, 49); // C#3
+  await tapKey(page, 52);
+  await tapKey(page, 55);
+  await expect(page.locator('.block.note')).toHaveCount(0);
+  await expect(page.getByTestId('panel-hint')).toContainText('Turn on Record');
+  // Nothing dimmed on the keyboard: previews are not evidence.
+  await expect(page.locator('.key.dim')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Back to guitar' }).click();
+  await page.getByRole('button', { name: 'Back to song' }).click();
+  await expect(page.getByRole('button', { name: 'Key' })).toHaveText(/Auto$/);
+
+  // The only history entry is the layer creation itself: one undo removes the layer.
+  await openGuitar(page);
+  await page.getByTestId('open-layer').click();
+  await page.getByTestId('undo').click();
+  await expect(page.locator('.empty-state')).toContainText('no longer exists');
+});
+
+test('Record resets to OFF when reopening a layer', async ({ page }) => {
+  await openGuitar(page);
+  await addLayer(page, 'single');
+  await recordOn(page);
+  await page.getByRole('button', { name: 'Back to guitar' }).click();
+  await page.getByTestId('open-layer').click();
+  await expect(page.getByTestId('record')).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('single-note layer: Record ON keys insert notes, editing and undo/redo work', async ({ page }) => {
+  await openGuitar(page);
+  await addLayer(page, 'single');
+  await recordOn(page);
+
+  await tapKey(page, 48);
+  await tapKey(page, 52);
+  await tapKey(page, 55);
   await expect(page.locator('.block.note')).toHaveCount(3);
   await expect(page.locator('.block.note').nth(0)).toHaveText('C3');
 
@@ -127,7 +170,12 @@ test('strummed chord layer: seed note → minor chord, strings, strum grid, play
   await expect(page.getByTestId('strum-grid')).toBeVisible();
   await expect(page.locator('.strum-slot')).toHaveCount(8);
 
-  await page.locator('.key[data-midi="57"]').dispatchEvent('pointerdown'); // A3
+  // Record OFF: a key press does not create a seed chord.
+  await tapKey(page, 57);
+  await expect(page.locator('.block.chord')).toHaveCount(0);
+
+  await recordOn(page);
+  await tapKey(page, 57); // A3
   await expect(page.locator('.block.chord.seed')).toHaveCount(1);
   await expect(page.getByTestId('chord-panel')).toBeVisible();
 
@@ -163,19 +211,39 @@ test('strummed chord layer: seed note → minor chord, strings, strum grid, play
   await expect(slot).toHaveText(/↓/);
 
   // Second chord with "New chord" target, then Major
-  await page.locator('.key[data-midi="50"]').dispatchEvent('pointerdown'); // D3
+  await tapKey(page, 50); // D3
   await page.getByTestId('make-major').click();
   await expect(page.locator('.block.chord')).toHaveCount(2);
   await expect(page.locator('.block.chord').nth(1)).toContainText('D');
 
-  // Add a tone to the selected chord via "Add to chord"
+  // "Add to chord" is an explicit edit: it works with Record OFF too.
+  await page.getByTestId('record').click();
+  await expect(page.getByTestId('record')).toHaveAttribute('aria-pressed', 'false');
   await page.getByTestId('input-target').getByText('Add to chord').click();
   await expect(page.getByTestId('chord-tones').locator('.tone')).toHaveCount(4);
-  await page.locator('.key[data-midi="52"]').dispatchEvent('pointerdown'); // E3 onto a muted string
+  await tapKey(page, 52); // E3 onto a muted string
   await expect(page.getByTestId('chord-tones').locator('.tone')).toHaveCount(5);
   await expect(page.locator('.block.chord')).toHaveCount(2);
+  // ...while "Preview" keys with Record OFF add nothing.
+  await page.getByTestId('input-target').getByText('Preview').click();
+  await tapKey(page, 55);
+  await expect(page.locator('.block.chord')).toHaveCount(2);
+  await expect(page.getByTestId('chord-tones').locator('.tone')).toHaveCount(5);
 
-  // Playback runs and the playhead appears
+  // Key guidance: committed Am + D(+E) material dims notes outside every plausible key.
+  await expect(page.locator('.key.dim').first()).toBeVisible();
+  await expect(page.locator('.key[data-midi="49"]')).toHaveClass(/dim/); // C#
+  await expect(page.locator('.key[data-midi="50"]')).not.toHaveClass(/dim/); // D
+  // Dimmed keys still play (Record ON -> still record).
+  await recordOn(page);
+  await page.getByTestId('deselect').click();
+  await tapKey(page, 49);
+  await expect(page.locator('.block.chord')).toHaveCount(3);
+  await page.getByTestId('undo').click();
+  await expect(page.locator('.block.chord')).toHaveCount(2);
+
+  // Playback runs from the start of the song and the playhead appears
+  await page.locator('.timeline-inner').click({ position: { x: 8, y: 100 } });
   await page.getByTestId('play').click();
   await expect(page.locator('.playhead')).toBeVisible();
   await page.waitForTimeout(400);
@@ -197,7 +265,8 @@ test('picked chord layer: pattern edits and per-chord override', async ({ page }
   await page.getByTestId('undo').click();
   await expect(page.locator('[data-pick="0-6"]')).toHaveClass(/on/);
 
-  await page.locator('.key[data-midi="52"]').dispatchEvent('pointerdown'); // E3
+  await recordOn(page);
+  await tapKey(page, 52); // E3
   await page.getByTestId('make-minor').click();
   await expect(page.locator('.block.chord').first()).toContainText('Em');
 
@@ -209,11 +278,35 @@ test('picked chord layer: pattern edits and per-chord override', async ({ page }
   await expect(page.locator('.panel-label', { hasText: 'Picking (layer default)' })).toBeVisible();
 });
 
+test('timeline length follows content, including after deletes', async ({ page }) => {
+  await openGuitar(page);
+  await addLayer(page, 'single');
+  const bars = page.locator('.ruler .bar-label');
+  await expect(bars).toHaveCount(1); // empty song = one usable bar
+  await recordOn(page);
+  await tapKey(page, 48); // bar 1
+  await expect(bars).toHaveCount(2);
+  // Move the cursor to the last slot of bar 2 and add there: spills into bar 3.
+  await page.getByTestId('deselect').click();
+  await page.locator('.timeline-inner').click({ position: { x: 224 * 2 - 10, y: 100 } });
+  await tapKey(page, 50);
+  await expect(bars).toHaveCount(4);
+  // Delete the trailing note: bars 3–4 disappear.
+  await page.locator('.block.note').nth(1).click();
+  await page.getByTestId('delete-event').click();
+  await expect(bars).toHaveCount(2);
+  await page.locator('.block.note').first().click();
+  await page.getByTestId('delete-event').click();
+  await expect(bars).toHaveCount(1);
+  await expect(page.locator('.block')).toHaveCount(0);
+});
+
 test('song persists across reload and home shows layers', async ({ page }) => {
   await openGuitar(page);
   await addLayer(page, 'single');
-  await page.locator('.key[data-midi="48"]').dispatchEvent('pointerdown');
-  await page.locator('.key[data-midi="50"]').dispatchEvent('pointerdown');
+  await recordOn(page);
+  await tapKey(page, 48);
+  await tapKey(page, 50);
   await page.getByRole('button', { name: 'Back to guitar' }).click();
   await page.getByRole('button', { name: 'Back to song' }).click();
   await expect(page.locator('[data-instrument="guitar"] .overview .clip')).toHaveCount(2);
