@@ -31,7 +31,7 @@ export function App() {
   }, [view]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setShowLaunch(false), 850);
+    const timer = window.setTimeout(() => setShowLaunch(false), 1700);
     return () => window.clearTimeout(timer);
   }, []);
 
