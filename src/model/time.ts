@@ -62,14 +62,17 @@ export function lastEventEnd(song: Song): number {
 }
 
 /**
- * Song length in bars, derived purely from content: the bar containing the
- * end of the last event, plus one empty bar to keep writing into. An empty
- * song is one usable bar. Trailing bars disappear as events are deleted.
+ * Song length in bars. Empty timeline space is explicit: the user adds slots
+ * manually instead of the app always appending a trailing empty bar.
+ *
+ * Content can still force the timeline wider (for migrated songs, moved
+ * events, etc.), so existing material is never clipped.
  */
 export function songBars(song: Song): number {
   const perBar = song.timeSignature.beatsPerBar;
-  const used = Math.ceil(lastEventEnd(song) / perBar - 1e-6);
-  return Math.max(0, used) + 1;
+  const used = Math.max(0, Math.ceil(lastEventEnd(song) / perBar - 1e-6));
+  const explicit = Number.isFinite(song.timelineBars) ? Math.max(1, Math.floor(song.timelineBars)) : 1;
+  return Math.max(1, explicit, used);
 }
 
 export function songBeats(song: Song): number {
