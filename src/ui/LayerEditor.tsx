@@ -191,11 +191,6 @@ export function LayerEditor({ layerId }: { layerId: string }) {
                 : 'Tap a block to edit it, or tap empty space to move the cursor.'}
           </div>
         )}
-        {selected && (
-          <button className="btn ghost wide" onClick={() => select(null)} data-testid="deselect">
-            Done
-          </button>
-        )}
       </div>
 
       <HumStatus state={hum.state} onMetronome={hum.setMetronome} />
