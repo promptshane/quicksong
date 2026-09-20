@@ -36,12 +36,12 @@ async function tapKey(page: Page, midi: number) {
   await page.locator(`.key[data-midi="${midi}"]`).dispatchEvent('pointerdown');
 }
 
-async function longPress(locator: Locator) {
+async function longPress(page: Page, locator: Locator) {
   const box = await locator.boundingBox();
   if (!box) throw new Error('Could not long-press hidden element');
   const point = { pointerId: 1, pointerType: 'touch', clientX: box.x + box.width / 2, clientY: box.y + box.height / 2 };
   await locator.dispatchEvent('pointerdown', point);
-  await locator.page().waitForTimeout(650);
+  await page.waitForTimeout(650);
   await locator.dispatchEvent('pointerup', point);
 }
 
@@ -162,7 +162,7 @@ test('single-note layer: Record ON keys insert notes, editing and undo/redo work
 
   // Delete is contextual: hold the block, then choose Delete.
   await expect(page.getByTestId('delete-event')).toHaveCount(0);
-  await longPress(page.locator('.block.note').nth(2));
+  await longPress(page, page.locator('.block.note').nth(2));
   await expect(page.getByTestId('context-delete-event')).toBeVisible();
   await page.getByTestId('context-delete-event').click();
   await expect(page.locator('.block.note')).toHaveCount(2);
@@ -308,7 +308,7 @@ test('timeline slots are added explicitly and can stay empty', async ({ page }) 
   // An explicitly added empty slot persists even when trailing material is deleted.
   await page.getByTestId('add-slot').click();
   await expect(bars).toHaveCount(3);
-  await longPress(page.locator('.block.note').nth(1));
+  await longPress(page, page.locator('.block.note').nth(1));
   await page.getByTestId('context-delete-event').click();
   await expect(page.locator('.block.note')).toHaveCount(1);
   await expect(bars).toHaveCount(3);
