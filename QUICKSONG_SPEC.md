@@ -256,9 +256,11 @@ Each instrument row represents its place in the song timeline.
 - If it has one layer, that layer fills the available row area.
 - If it has multiple layers, the row visually divides to show them.
 - Clips/events should appear at their actual positions across the song timeline.
-- Empty timeline length should not accumulate unnecessarily.
-- The visible/working timeline should dynamically shrink or grow based on content, generally ending at the **last event plus one empty bar**.
-- Deleting the last event(s) should allow unused trailing bars to disappear rather than leaving a confusing trail of empty bars.
+- Empty timeline length should not accumulate automatically.
+- The app should **not** append a trailing empty bar/slot just because content exists.
+- Timeline bar-slots are created explicitly by the user with a compact **+ Slot** control at the end of the timeline.
+- A manually created slot may intentionally remain empty; empty explicit slots are part of the song's timing and should persist.
+- Existing content must never be clipped if it extends farther than the explicit slot count.
 - There is no requirement to maintain a fixed four-bar minimum.
 
 For the first build:
@@ -303,6 +305,8 @@ Persistent layer-editing actions should include:
 - **Record** toggle/state
 - **Hum input**
 - **Manual note input**
+
+Event deletion should stay out of the persistent editing controls. Holding an existing timeline note/chord should reveal a contextual **Delete** action. A separate persistent **Done** button is unnecessary; tapping elsewhere can dismiss/change selection naturally.
 
 Record should be **OFF by default**. The interface should make the current Record state obvious without making it visually dominant.
 
