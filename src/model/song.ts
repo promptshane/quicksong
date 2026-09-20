@@ -26,6 +26,7 @@ export function createSong(): Song {
     bpm: 100,
     timeSignature: DEFAULT_TIME_SIGNATURE,
     key: { mode: 'auto' },
+    timelineBars: 1,
     guitar: { layers: [] },
   };
 }
