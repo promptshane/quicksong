@@ -119,6 +119,8 @@ export interface Song {
   bpm: number;
   timeSignature: TimeSignature;
   key: KeySetting;
+  /** Number of timeline bar-slots the user has explicitly created. */
+  timelineBars: number;
   guitar: {
     layers: GuitarLayer[];
   };
