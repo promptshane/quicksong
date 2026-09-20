@@ -10,8 +10,21 @@ const SONG_KEY = 'quicksong:song:v1';
 export async function loadSong(): Promise<Song | null> {
   try {
     const stored = await get<Song>(SONG_KEY);
-    if (stored && stored.version === 1 && stored.guitar) return stored;
-    return null;
+    if (!stored || stored.version !== 1 || !stored.guitar) return null;
+
+    // Songs saved before explicit timeline slots existed should open at the
+    // smallest size that still contains all existing material — no automatic
+    // extra empty bar.
+    if (!Number.isFinite(stored.timelineBars) || stored.timelineBars < 1) {
+      const perBar = stored.timeSignature.beatsPerBar;
+      let lastEnd = 0;
+      for (const layer of stored.guitar.layers) {
+        for (const event of layer.events) lastEnd = Math.max(lastEnd, event.start + event.duration);
+      }
+      return { ...stored, timelineBars: Math.max(1, Math.ceil(lastEnd / perBar - 1e-6)) };
+    }
+
+    return stored;
   } catch (err) {
     console.warn('QuickSong: could not load saved song', err);
     return null;
