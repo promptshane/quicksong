@@ -1,5 +1,5 @@
 import { transport, useTransport } from '../audio/transport';
-import { lastEventEnd } from '../model/time';
+import { songBeats } from '../model/time';
 import { useStore } from '../state/store';
 
 /** Play/pause the whole song from the beginning, looping at the content end. */
@@ -15,7 +15,7 @@ export function PlayButton({ small = false }: { small?: boolean }) {
       return;
     }
 
-    const endBeat = lastEventEnd(song) || song.timeSignature.beatsPerBar;
+    const endBeat = songBeats(song);
 
     const playLoop = () => {
       void transport.play(song, 0, {
