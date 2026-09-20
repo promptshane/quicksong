@@ -14,7 +14,7 @@ import {
   updateEvent,
   updateLayer,
 } from '../model/song';
-import { beatsToSeconds, eighthBeats, snapToEighth } from '../model/time';
+import { beatsToSeconds, eighthBeats, snapToEighth, songBars } from '../model/time';
 import type { AnyEvent, ChordEvent, ChordQuality, NoteEvent, Song } from '../model/types';
 import { useStore } from './store';
 
@@ -203,6 +203,15 @@ export function deleteEvent(layerId: string, eventId: string): void {
   const { commit, select } = useStore.getState();
   commit((s) => removeEvent(s, layerId, eventId));
   select(null);
+}
+
+/** Add one explicit empty timeline slot (one bar) and move the cursor into it. */
+export function addTimelineSlot(): void {
+  const { song, commit, setCursor } = useStore.getState();
+  const currentBars = songBars(song);
+  const nextBarStart = currentBars * song.timeSignature.beatsPerBar;
+  commit((s) => ({ ...s, timelineBars: songBars(s) + 1 }));
+  setCursor(nextBarStart);
 }
 
 export function setStrumSlot(layerId: string, index: number): void {
