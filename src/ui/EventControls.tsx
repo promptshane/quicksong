@@ -1,4 +1,4 @@
-import { changeEventDuration, deleteEvent, moveEvent, setEventVelocity } from '../state/actions';
+import { changeEventDuration, moveEvent, setEventVelocity } from '../state/actions';
 import { eighthBeats, positionLabel } from '../model/time';
 import type { AnyEvent, TimeSignature } from '../model/types';
 
@@ -16,7 +16,7 @@ function durationLabel(beats: number, ts: TimeSignature): string {
   return `${Number(beats.toFixed(2))} beat${beats === 1 ? '' : 's'}`;
 }
 
-/** Duration, position, velocity and delete — shared by notes and chords. */
+/** Duration, position and velocity — shared by notes and chords. */
 export function EventControls({ layerId, event, timeSignature }: EventControlsProps) {
   const step = eighthBeats(timeSignature);
   return (
@@ -61,9 +61,6 @@ export function EventControls({ layerId, event, timeSignature }: EventControlsPr
           aria-label="Velocity"
         />
       </div>
-      <button className="btn ghost danger wide" onClick={() => deleteEvent(layerId, event.id)} data-testid="delete-event">
-        Delete
-      </button>
     </>
   );
 }
