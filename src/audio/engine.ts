@@ -14,6 +14,23 @@ export interface Instrument {
 }
 
 type InstrumentFactory = (ctx: AudioContext, destination: AudioNode) => Instrument;
+type AudioSessionType = 'playback' | 'play-and-record';
+
+/**
+ * Safari/iOS exposes AudioSession even though it is not in every TS DOM lib.
+ * Setting playback explicitly keeps Web Audio audible when the hardware
+ * silent switch is on; mic capture temporarily switches to play-and-record.
+ */
+export function setAudioSessionType(type: AudioSessionType): void {
+  if (typeof navigator === 'undefined') return;
+  const nav = navigator as Navigator & { audioSession?: { type: string } };
+  if (!nav.audioSession) return;
+  try {
+    nav.audioSession.type = type;
+  } catch {
+    // Unsupported/partially implemented browsers can safely ignore this.
+  }
+}
 
 export class AudioEngine {
   private ctx: AudioContext | null = null;
@@ -32,6 +49,11 @@ export class AudioEngine {
   /** Create the context if needed and try to resume it. Call from a user gesture. */
   async unlock(): Promise<AudioContext | null> {
     if (typeof window === 'undefined') return null;
+
+    // Important on iPhone: the default "ambient" session may obey the silent
+    // switch and make Web Audio appear broken even though scheduling works.
+    setAudioSessionType('playback');
+
     const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) return null;
     if (!this.ctx) {
@@ -42,17 +64,19 @@ export class AudioEngine {
       this.instrument = this.factory(this.ctx, this.master);
     }
     if (this.ctx.state !== 'running') {
-      try {
-        await this.ctx.resume();
-      } catch {
-        // Will retry on the next gesture.
-      }
-      // Older iOS needs an actual (silent) buffer played inside the gesture.
+      // Start a silent source immediately while we are still inside the user
+      // gesture. Older iOS builds use this to unlock the output route.
       const buffer = this.ctx.createBuffer(1, 1, this.ctx.sampleRate);
       const src = this.ctx.createBufferSource();
       src.buffer = buffer;
       src.connect(this.ctx.destination);
       src.start(0);
+
+      try {
+        await this.ctx.resume();
+      } catch {
+        // Will retry on the next gesture.
+      }
     }
     return this.ctx;
   }
