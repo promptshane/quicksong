@@ -9,6 +9,7 @@ import * as engine from '../src/audio/engine';
 engine.initAudioEngine(() => ({ noteOn() {}, allNotesOff() {} }));
 
 import {
+  addTimelineSlot,
   auditionNote,
   changeEventDuration,
   deleteEvent,
@@ -156,26 +157,37 @@ describe('preview vs record', () => {
   });
 });
 
-describe('timeline length follows content', () => {
-  it('shrinks after deleting trailing events and pulls the cursor back in', () => {
+describe('explicit timeline slots', () => {
+  it('only grows when the user adds a slot and preserves empty slots', () => {
     const layerId = addLayer('single');
     expect(songBars(useStore.getState().song)).toBe(1);
-    insertAtCursor(layerId, 60); // beat 0 -> song is now 2 bars
+
+    insertAtCursor(layerId, 60);
+    expect(songBars(useStore.getState().song)).toBe(1); // no automatic trailing bar
+
+    addTimelineSlot();
     expect(songBars(useStore.getState().song)).toBe(2);
-    useStore.getState().setCursor(7.5); // last slot of the empty bar
-    const id = insertAtCursor(layerId, 62)!; // spills into bar 3
-    expect(songBars(useStore.getState().song)).toBe(4);
-    expect(useStore.getState().cursorBeat).toBe(8.5);
+    expect(useStore.getState().cursorBeat).toBe(4); // start of the new slot
+
+    const id = insertAtCursor(layerId, 62)!;
+    expect(songBars(useStore.getState().song)).toBe(2);
+
+    addTimelineSlot();
+    expect(songBars(useStore.getState().song)).toBe(3);
+    expect(useStore.getState().cursorBeat).toBe(8);
+
     deleteEvent(layerId, id);
-    expect(songBars(useStore.getState().song)).toBe(2);
-    expect(useStore.getState().cursorBeat).toBe(7.5); // pulled back inside the song
+    expect(songBars(useStore.getState().song)).toBe(3); // explicit empty slots remain
     useStore.getState().undo();
-    expect(songBars(useStore.getState().song)).toBe(4);
+    expect(songBars(useStore.getState().song)).toBe(3);
   });
 
-  it('never lets the cursor be set beyond the song', () => {
+  it('never lets the cursor be set beyond the created slots', () => {
     addLayer('single');
     useStore.getState().setCursor(40);
-    expect(useStore.getState().cursorBeat).toBe(3.5); // one bar of 4/4, last eighth
+    expect(useStore.getState().cursorBeat).toBe(3.5); // one 4/4 slot, last eighth
+    addTimelineSlot();
+    useStore.getState().setCursor(40);
+    expect(useStore.getState().cursorBeat).toBe(7.5);
   });
 });
