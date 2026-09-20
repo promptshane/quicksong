@@ -1,3 +1,4 @@
+import { setAudioSessionType } from '../audio/engine';
 import type { PitchDetector, PitchFrame } from './detector';
 
 export interface MicFrame extends PitchFrame {
@@ -31,15 +32,25 @@ export class MicCapture {
 
   /** Request permission and start streaming frames. Throws if denied. */
   async start(onFrame: (frame: MicFrame) => void, intervalMs = 30): Promise<void> {
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        // Voice processing smears pitch and onsets; we want the raw signal.
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-      },
-      video: false,
-    });
+    // iOS routes input/output more reliably when the session explicitly
+    // enters play-and-record before getUserMedia.
+    setAudioSessionType('play-and-record');
+
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          // Voice processing smears pitch and onsets; we want the raw signal.
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+        video: false,
+      });
+    } catch (err) {
+      setAudioSessionType('playback');
+      throw err;
+    }
+
     this.source = this.ctx.createMediaStreamSource(this.stream);
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = this.detector.frameSize;
@@ -64,5 +75,8 @@ export class MicCapture {
     this.stream = null;
     this.source = null;
     this.analyser = null;
+
+    // Return to normal speaker playback after microphone capture ends.
+    setAudioSessionType('playback');
   }
 }
