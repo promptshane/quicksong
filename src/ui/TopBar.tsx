@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { transport } from '../audio/transport';
 import { NOTE_NAMES, inferKey, keyLabel } from '../model/music';
 import { applyTimeSignature, pitchClassHistogram } from '../model/song';
 import { TIME_SIGNATURES, sameTimeSignature, timeSignatureLabel } from '../model/time';
@@ -20,6 +21,7 @@ export function TopBar() {
 
   const setBpm = (bpm: number) => {
     const clamped = Math.max(MIN_BPM, Math.min(MAX_BPM, Math.round(bpm)));
+    transport.setBpm(clamped);
     commit((s) => ({ ...s, bpm: clamped }));
   };
 
