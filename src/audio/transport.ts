@@ -32,6 +32,8 @@ class Transport {
   private loop = false;
   private loopLength = 0;
   private startBeat = 0;
+  /** Unwrapped musical beat corresponding to startTime; reset on live tempo changes. */
+  private anchorBeat = 0;
   private startTime = 0;
   private bpm = 100;
   private endBeat = 0;
@@ -43,14 +45,43 @@ class Transport {
     return this.timer !== null;
   }
 
+  private absoluteBeatAt(audioTime: number): number {
+    const elapsedBeats = Math.max(0, ((audioTime - this.startTime) * this.bpm) / 60);
+    return this.anchorBeat + elapsedBeats;
+  }
+
   currentBeat(): number {
     if (!this.isPlaying) return useTransport.getState().playheadBeat;
-    const elapsedBeats = Math.max(0, ((getAudioEngine().now() - this.startTime) * this.bpm) / 60);
+    const absoluteBeat = this.absoluteBeatAt(getAudioEngine().now());
     if (this.loop && this.loopLength > 0) {
-      const wrapped = ((elapsedBeats % this.loopLength) + this.loopLength) % this.loopLength;
+      const wrapped = ((absoluteBeat - this.startBeat) % this.loopLength + this.loopLength) % this.loopLength;
       return this.startBeat + wrapped;
     }
-    return this.startBeat + elapsedBeats;
+    return absoluteBeat;
+  }
+
+  /**
+   * Change tempo without restarting playback. Preserve the exact musical
+   * position by making "now" a new time/beat anchor, then schedule subsequent
+   * notes against the new BPM.
+   */
+  setBpm(nextBpm: number): void {
+    if (!Number.isFinite(nextBpm) || nextBpm <= 0 || nextBpm === this.bpm) return;
+
+    if (!this.isPlaying) {
+      this.bpm = nextBpm;
+      return;
+    }
+
+    const now = getAudioEngine().now();
+    const beatNow = this.absoluteBeatAt(now);
+    this.anchorBeat = beatNow;
+    this.startTime = now;
+    this.bpm = nextBpm;
+
+    // Fill the look-ahead immediately at the new tempo rather than waiting
+    // for the next 25 ms scheduler tick.
+    this.tick();
   }
 
   /**
@@ -72,6 +103,7 @@ class Transport {
     this.notes = renderSong(song);
     this.bpm = song.bpm;
     this.startBeat = fromBeat;
+    this.anchorBeat = fromBeat;
     this.endBeat = opts.endBeat ?? songBeats(song);
     this.loop = opts.loop === true && this.endBeat > this.startBeat;
     this.loopLength = this.endBeat - this.startBeat;
@@ -124,7 +156,7 @@ class Transport {
 
   /** AudioContext time for a song beat, given the current play session. */
   timeForBeat(beat: number): number {
-    return this.startTime + beatsToSeconds(beat - this.startBeat, this.bpm);
+    return this.startTime + beatsToSeconds(beat - this.anchorBeat, this.bpm);
   }
 
   private tick(): void {
