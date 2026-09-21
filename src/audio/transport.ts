@@ -26,7 +26,11 @@ class Transport {
   private timer: ReturnType<typeof setInterval> | null = null;
   private raf = 0;
   private notes: ScheduledNote[] = [];
+  private playbackNotes: ScheduledNote[] = [];
   private nextIndex = 0;
+  private loopCycle = 0;
+  private loop = false;
+  private loopLength = 0;
   private startBeat = 0;
   private startTime = 0;
   private bpm = 100;
@@ -41,19 +45,24 @@ class Transport {
 
   currentBeat(): number {
     if (!this.isPlaying) return useTransport.getState().playheadBeat;
-    const elapsed = getAudioEngine().now() - this.startTime;
-    return this.startBeat + (elapsed * this.bpm) / 60;
+    const elapsedBeats = ((getAudioEngine().now() - this.startTime) * this.bpm) / 60;
+    if (this.loop && this.loopLength > 0) {
+      const wrapped = ((elapsedBeats % this.loopLength) + this.loopLength) % this.loopLength;
+      return this.startBeat + wrapped;
+    }
+    return this.startBeat + elapsedBeats;
   }
 
   /**
    * Start playing `song` from `fromBeat`. `opts.metronome` adds a click on
    * every beat (used while recording a hum). `opts.endBeat` overrides where
-   * playback stops (default: end of song).
+   * playback stops (default: end of song). `opts.loop` keeps the scheduler
+   * running continuously and schedules the next pass ahead of the boundary.
    */
   async play(
     song: Song,
     fromBeat: number,
-    opts: { metronome?: boolean; endBeat?: number; onEnd?: () => void } = {},
+    opts: { metronome?: boolean; endBeat?: number; onEnd?: () => void; loop?: boolean } = {},
   ): Promise<void> {
     const engine = getAudioEngine();
     const ctx = await engine.unlock();
@@ -64,11 +73,15 @@ class Transport {
     this.bpm = song.bpm;
     this.startBeat = fromBeat;
     this.endBeat = opts.endBeat ?? songBeats(song);
+    this.loop = opts.loop === true && this.endBeat > this.startBeat;
+    this.loopLength = this.endBeat - this.startBeat;
     this.onEnd = opts.onEnd ?? null;
     this.metronome = opts.metronome ? { beatsPerBar: song.timeSignature.beatsPerBar } : null;
     this.nextClickBeat = Math.ceil(fromBeat - 1e-6);
-    this.nextIndex = this.notes.findIndex((n) => n.beat >= fromBeat - 1e-6);
-    if (this.nextIndex < 0) this.nextIndex = this.notes.length;
+
+    this.playbackNotes = this.notes.filter((n) => n.beat >= this.startBeat - 1e-6 && n.beat < this.endBeat - 1e-6);
+    this.nextIndex = 0;
+    this.loopCycle = 0;
     this.startTime = ctx.currentTime + 0.05;
 
     useTransport.setState({ playing: true, playheadBeat: fromBeat });
@@ -91,6 +104,9 @@ class Transport {
     } catch {
       // engine not created yet
     }
+    this.loop = false;
+    this.loopLength = 0;
+    this.playbackNotes = [];
     useTransport.setState({ playing: false, playheadBeat: resetTo ?? useTransport.getState().playheadBeat });
   }
 
@@ -118,15 +134,35 @@ class Transport {
     if (!instrument || !ctx) return;
     const horizon = ctx.currentTime + LOOKAHEAD_SEC;
 
-    while (this.nextIndex < this.notes.length) {
-      const n = this.notes[this.nextIndex];
-      if (n.beat >= this.endBeat - 1e-6) break;
-      const when = this.timeForBeat(n.beat) + n.offsetSec;
-      if (when > horizon) break;
-      if (n.gain > 0) {
-        instrument.noteOn(n.midi, n.velocity, when, beatsToSeconds(n.durationBeats, this.bpm), n.gain);
+    if (this.loop) {
+      // Schedule notes using an ever-increasing absolute beat. When one pass
+      // is exhausted, immediately advance to the next cycle. Because the
+      // look-ahead horizon crosses the loop boundary, beat 0 of the next pass
+      // is already scheduled before the current pass ends — no stop/restart gap.
+      while (this.playbackNotes.length > 0) {
+        const n = this.playbackNotes[this.nextIndex];
+        const absoluteBeat = n.beat + this.loopCycle * this.loopLength;
+        const when = this.timeForBeat(absoluteBeat) + n.offsetSec;
+        if (when > horizon) break;
+        if (n.gain > 0) {
+          instrument.noteOn(n.midi, n.velocity, when, beatsToSeconds(n.durationBeats, this.bpm), n.gain);
+        }
+        this.nextIndex++;
+        if (this.nextIndex >= this.playbackNotes.length) {
+          this.nextIndex = 0;
+          this.loopCycle++;
+        }
       }
-      this.nextIndex++;
+    } else {
+      while (this.nextIndex < this.playbackNotes.length) {
+        const n = this.playbackNotes[this.nextIndex];
+        const when = this.timeForBeat(n.beat) + n.offsetSec;
+        if (when > horizon) break;
+        if (n.gain > 0) {
+          instrument.noteOn(n.midi, n.velocity, when, beatsToSeconds(n.durationBeats, this.bpm), n.gain);
+        }
+        this.nextIndex++;
+      }
     }
 
     if (this.metronome) {
@@ -139,7 +175,7 @@ class Transport {
       }
     }
 
-    if (this.currentBeat() >= this.endBeat) {
+    if (!this.loop && this.currentBeat() >= this.endBeat) {
       const onEnd = this.onEnd;
       this.stop(this.startBeat);
       onEnd?.();
