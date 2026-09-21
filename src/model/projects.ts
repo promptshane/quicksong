@@ -21,6 +21,35 @@ export interface ProjectRecord extends ProjectMeta {
 
 export const DEFAULT_PROJECT_NAME = 'Untitled Project';
 
+/** Auto-generated untitled names are disposable until the song contains information. */
+export function isDefaultProjectName(name: string): boolean {
+  return /^Untitled Project(?: [2-9]\d*)?$/.test(name.trim());
+}
+
+/**
+ * True only when a song still matches a freshly created project in every
+ * user-meaningful way. The song id is intentionally ignored.
+ */
+export function isPristineSong(song: Song): boolean {
+  const defaultKey =
+    song.key.mode === 'auto' &&
+    song.key.tonality === undefined &&
+    song.key.preference === undefined;
+  return (
+    song.bpm === 100 &&
+    song.timeSignature.beatsPerBar === 4 &&
+    song.timeSignature.beatUnit === 4 &&
+    defaultKey &&
+    song.timelineBars === 1 &&
+    song.guitar.layers.length === 0
+  );
+}
+
+/** A default-named project with a pristine song carries no user information. */
+export function isDisposableEmptyProject(project: Pick<ProjectRecord, 'name' | 'song'>): boolean {
+  return isDefaultProjectName(project.name) && isPristineSong(project.song);
+}
+
 export function createProjectRecord(name: string, song: Song, now = Date.now()): ProjectRecord {
   return { id: newId('proj'), name, song, createdAt: now, updatedAt: now };
 }
