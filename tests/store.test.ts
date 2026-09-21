@@ -1,5 +1,15 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { convertChordLayerType, createLayer, duplicateLayer, findLayer, pitchClassHistogram } from '../src/model/song';
+import { buildKeyWheel } from '../src/model/keyWheel';
+import {
+  convertChordLayerType,
+  createLayer,
+  duplicateLayer,
+  findLayer,
+  pitchClassHistogram,
+  setAutoKey,
+  setAutoKeyPreference,
+  setManualKey,
+} from '../src/model/song';
 import { songBars } from '../src/model/time';
 import type { StrumLayer } from '../src/model/types';
 import { useStore } from '../src/state/store';
@@ -228,5 +238,89 @@ describe('explicit timeline slots', () => {
     addTimelineSlot();
     useStore.getState().setCursor(40);
     expect(useStore.getState().cursorBeat).toBe(7.5);
+  });
+});
+
+describe('Auto key preference in the store', () => {
+  /** A long C chord then a short G chord: C major inferred, G major still plausible. */
+  function recordCThenG(layerId: string) {
+    const c = insertAtCursor(layerId, 60)!;
+    makeChord(layerId, c, 'major');
+    changeEventDuration(layerId, c, 8);
+    const g = insertAtCursor(layerId, 55)!;
+    makeChord(layerId, g, 'major');
+    changeEventDuration(layerId, g, -3);
+  }
+
+  it('tapping a plausible key keeps Auto and survives compatible edits', () => {
+    const layerId = addLayer('strum');
+    recordCThenG(layerId);
+    const { commit } = useStore.getState();
+    expect(buildKeyWheel(useStore.getState().song).assumed).toEqual({ tonic: 0, quality: 'major' });
+
+    commit((s) => setAutoKeyPreference(s, { tonic: 7, quality: 'major' }));
+    let wheel = buildKeyWheel(useStore.getState().song);
+    expect(useStore.getState().song.key.mode).toBe('auto');
+    expect(wheel.assumed).toEqual({ tonic: 7, quality: 'major' });
+    expect(wheel.preferred).toBe(true);
+
+    // Em fits both C and G major: preference stays.
+    const em = insertAtCursor(layerId, 52)!;
+    makeChord(layerId, em, 'minor');
+    wheel = buildKeyWheel(useStore.getState().song);
+    expect(wheel.assumed).toEqual({ tonic: 7, quality: 'major' });
+    expect(wheel.preferred).toBe(true);
+  });
+
+  it('is dropped by commit when committed material makes it impossible, and undo brings it back', () => {
+    const layerId = addLayer('strum');
+    recordCThenG(layerId);
+    useStore.getState().commit((s) => setAutoKeyPreference(s, { tonic: 7, quality: 'major' }));
+
+    // Even the seed note F has no place in G major: the preference goes with
+    // that very commit, before the chord is built.
+    const f = insertAtCursor(layerId, 53)!;
+    let song = useStore.getState().song;
+    expect(song.key).toEqual({ mode: 'auto', tonality: 'major' });
+    makeChord(layerId, f, 'major');
+    song = useStore.getState().song;
+    expect(song.key).toEqual({ mode: 'auto', tonality: 'major' });
+    expect(buildKeyWheel(song).assumed).toEqual({ tonic: 0, quality: 'major' });
+
+    // Undoing both steps restores the state that still had the preference.
+    useStore.getState().undo();
+    useStore.getState().undo();
+    song = useStore.getState().song;
+    expect(song.key).toMatchObject({ mode: 'auto', preference: { tonic: 7, quality: 'major' } });
+    expect(buildKeyWheel(song).assumed).toEqual({ tonic: 7, quality: 'major' });
+  });
+
+  it('a preview never disturbs the preference', () => {
+    const layerId = addLayer('strum');
+    recordCThenG(layerId);
+    useStore.getState().commit((s) => setAutoKeyPreference(s, { tonic: 7, quality: 'major' }));
+    const before = useStore.getState().song;
+    auditionNote(53); // F would rule G major out — but previews are not evidence
+    auditionNote(66);
+    expect(useStore.getState().song).toBe(before);
+    expect(buildKeyWheel(useStore.getState().song).assumed).toEqual({ tonic: 7, quality: 'major' });
+  });
+
+  it('manual key still works as before and is untouched by material', () => {
+    const layerId = addLayer('strum');
+    useStore.getState().commit((s) => setManualKey(s, { tonic: 9, quality: 'minor' }));
+    recordCThenG(layerId);
+    const f = insertAtCursor(layerId, 66)!; // F# major: outside A minor entirely
+    makeChord(layerId, f, 'major');
+    const song = useStore.getState().song;
+    expect(song.key).toEqual({ mode: 'manual', tonic: 9, quality: 'minor' });
+    const wheel = buildKeyWheel(song);
+    expect(wheel.mode).toBe('manual');
+    expect(wheel.assumed).toEqual({ tonic: 9, quality: 'minor' });
+    expect(wheel.plausible).toEqual([{ tonic: 9, quality: 'minor' }]);
+    expect(wheel.cells.find((c) => c.triad.root === 6 && c.triad.quality === 'major')!.chordState).toBe('usedBorrowed');
+
+    useStore.getState().commit(setAutoKey);
+    expect(useStore.getState().song.key).toEqual({ mode: 'auto', tonality: 'minor' });
   });
 });

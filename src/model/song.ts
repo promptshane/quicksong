@@ -1,5 +1,6 @@
 import { addToneToVoicing, defaultVoicing, relabelChord, singleNoteVoicing, soundingNotes } from './chords';
 import { newId } from './ids';
+import { candidateKeys, isPlausibleKey, keyTonality, relativeKey, sameKey, triadId, type Triad } from './keys';
 import { pitchClassOf } from './music';
 import { DEFAULT_TIME_SIGNATURE, eighthsPerBar } from './time';
 import type {
@@ -9,6 +10,8 @@ import type {
   ChordQuality,
   GuitarLayer,
   GuitarLayerType,
+  KeySetting,
+  MusicalKey,
   NoteEvent,
   PickedLayer,
   SingleNoteLayer,
@@ -277,4 +280,71 @@ export function usedPitchClasses(song: Song): Set<number> {
     }
   }
   return out;
+}
+
+/**
+ * Distinct chords committed across every guitar layer (root + major/minor).
+ * Seed notes and hand-edited 'custom' voicings are not chords. The same chord
+ * on several layers counts once — "used" is a yes/no.
+ */
+export function usedChords(song: Song): Triad[] {
+  const seen = new Map<string, Triad>();
+  for (const layer of song.guitar.layers) {
+    if (!isChordLayer(layer)) continue;
+    for (const ev of layer.events) {
+      if (ev.quality !== 'major' && ev.quality !== 'minor') continue;
+      const triad: Triad = { root: ev.root, quality: ev.quality };
+      seen.set(triadId(triad), triad);
+    }
+  }
+  return [...seen.values()];
+}
+
+// ---- key setting ----------------------------------------------------------
+
+export function setManualKey(song: Song, key: MusicalKey): Song {
+  return { ...song, key: { mode: 'manual', tonic: key.tonic, quality: key.quality } };
+}
+
+/** Back to Auto. Keeps the tonality the manual key had so the wheel does not jump. */
+export function setAutoKey(song: Song): Song {
+  if (song.key.mode === 'auto') return song;
+  return { ...song, key: { mode: 'auto', tonality: song.key.quality } };
+}
+
+/**
+ * "Assume this key for now." Stays in Auto; only a still-plausible key can be
+ * preferred, and the Major/Minor tonality follows the tapped key.
+ */
+export function setAutoKeyPreference(song: Song, key: MusicalKey): Song {
+  if (song.key.mode !== 'auto') return song;
+  if (!isPlausibleKey(key, candidateKeys(usedPitchClasses(song)))) return song;
+  if (sameKey(song.key.preference, key)) return song;
+  return { ...song, key: { mode: 'auto', tonality: key.quality, preference: key } };
+}
+
+/**
+ * Major / Minor toggle. In Auto an existing preference moves to its relative
+ * key (same wheel slot, other ring); in manual the chosen key does the same.
+ */
+export function setKeyTonality(song: Song, tonality: ChordQuality): Song {
+  if (keyTonality(song.key) === tonality) return song;
+  if (song.key.mode === 'manual') {
+    return setManualKey(song, relativeKey({ tonic: song.key.tonic, quality: song.key.quality }));
+  }
+  const key: KeySetting = { mode: 'auto', tonality };
+  if (song.key.preference) key.preference = relativeKey(song.key.preference);
+  return { ...song, key };
+}
+
+/**
+ * Drop an Auto preference that committed material has made impossible, so the
+ * song never carries a key it cannot be in. Returns the same object when
+ * nothing changes; call after every edit.
+ */
+export function reconcileKeyPreference(song: Song): Song {
+  if (song.key.mode !== 'auto' || !song.key.preference) return song;
+  if (isPlausibleKey(song.key.preference, candidateKeys(usedPitchClasses(song)))) return song;
+  const { preference: _dropped, ...key } = song.key;
+  return { ...song, key };
 }

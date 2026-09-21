@@ -84,12 +84,109 @@ test('song settings: BPM, time signature and key', async ({ page }) => {
   await page.getByRole('button', { name: '6/8' }).click();
   await expect(page.getByRole('button', { name: 'Time signature' })).toContainText('6/8');
 
-  await expect(page.getByRole('button', { name: 'Key' })).toContainText('Auto');
-  await page.getByRole('button', { name: 'Key' }).click();
-  await expect(page.getByRole('button', { name: 'Auto' })).toHaveClass(/selected/);
-  await page.getByRole('button', { name: 'Am', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Key', exact: true })).toContainText('Auto');
+  await page.getByRole('button', { name: 'Key', exact: true }).click();
+  await expect(page.getByTestId('key-auto')).toHaveAttribute('aria-pressed', 'true');
+  // With nothing recorded every key is plausible: tapping Am assumes it but stays in Auto.
+  await page.getByRole('button', { name: 'Assume A minor' }).click();
+  await expect(page.getByTestId('key-auto')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('key-status')).toContainText('Auto');
+  await expect(page.getByTestId('key-status')).toContainText('A minor');
+  await expect(page.getByRole('button', { name: 'Key', exact: true })).toContainText('Auto · Am');
+  // Manual lock is still available.
+  await page.getByTestId('key-lock').click();
+  await expect(page.getByTestId('key-lock')).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Done' }).click();
-  await expect(page.getByRole('button', { name: 'Key' })).toContainText('Am');
+  await expect(page.getByRole('button', { name: 'Key', exact: true })).toHaveText(/Key\s*Am$/);
+  // The manual key survives a reload (saves are debounced).
+  await page.waitForTimeout(600);
+  await page.reload();
+  await expect(page.locator('.app[data-hydrated="true"]')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Key', exact: true })).toHaveText(/Key\s*Am$/);
+});
+
+test('Key panel: circle of fifths follows committed chords and Auto preferences', async ({ page }) => {
+  await openGuitar(page);
+  await addLayer(page, 'strum');
+  await recordOn(page);
+  // A full-bar C chord then a shorter G: C major inferred, G major still plausible.
+  await tapKey(page, 60);
+  await page.getByTestId('make-major').click();
+  await tapKey(page, 55);
+  await page.getByTestId('make-major').click();
+  await page.getByRole('button', { name: 'Shorter' }).click();
+  await page.getByRole('button', { name: 'Shorter' }).click();
+  await page.getByRole('button', { name: 'Back to guitar' }).click();
+  await page.getByRole('button', { name: 'Back to song' }).click();
+  await expect(page.getByRole('button', { name: 'Key', exact: true })).toContainText('Auto · C');
+
+  await page.getByRole('button', { name: 'Key', exact: true }).click();
+  const status = page.getByTestId('key-status');
+  await expect(status).toContainText('Auto');
+  await expect(status).toContainText('C major');
+  const wheel = page.getByTestId('key-wheel');
+  await expect(wheel).toHaveAttribute('data-rotation', '0');
+  await expect(wheel.locator('[data-testid="wheel-cell"]')).toHaveCount(36);
+
+  // Fits an iPhone portrait screen: no horizontal overflow, and the wheel is a real touch target.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  const box = (await wheel.boundingBox())!;
+  expect(box.width).toBeLessThanOrEqual(390 - 32);
+  expect(box.width).toBeGreaterThan(250);
+  const cBox = (await wheel.locator('[data-chord="C"]').boundingBox())!;
+  expect(Math.min(cBox.width, cBox.height)).toBeGreaterThanOrEqual(40);
+
+  const cell = (chord: string) => wheel.locator(`[data-chord="${chord}"]`);
+  await expect(cell('C')).toHaveAttribute('data-chord-state', 'usedDiatonic');
+  await expect(cell('C')).toHaveAttribute('data-key-state', 'assumed');
+  await expect(cell('G')).toHaveAttribute('data-chord-state', 'usedDiatonic');
+  await expect(cell('G')).toHaveAttribute('data-key-state', 'plausible');
+  await expect(cell('F')).toHaveAttribute('data-chord-state', 'diatonic');
+  await expect(cell('Bdim')).toHaveAttribute('data-chord-state', 'diatonic');
+  await expect(cell('D')).toHaveAttribute('data-chord-state', 'possible'); // G major's V
+  await expect(cell('D')).toHaveAttribute('data-key-state', 'impossible');
+  await expect(cell('A#')).toHaveAttribute('data-chord-state', 'impossible');
+  // Only plausible tonics are tappable.
+  await expect(wheel.getByRole('button')).toHaveCount(4);
+
+  // Tap G: assumed key, wheel rotates, still Auto.
+  await page.getByRole('button', { name: 'Assume G major' }).click();
+  await expect(status).toContainText('G major');
+  await expect(page.getByTestId('key-auto')).toHaveAttribute('aria-pressed', 'true');
+  await expect(wheel).toHaveAttribute('data-rotation', '-30');
+  await expect(cell('G')).toHaveAttribute('data-key-state', 'assumed');
+  await expect(cell('C')).toHaveAttribute('data-key-state', 'plausible');
+  await expect(cell('D')).toHaveAttribute('data-chord-state', 'diatonic');
+  await expect(cell('F')).toHaveAttribute('data-chord-state', 'possible');
+  // Labels stay upright: the rotor turns one way and every label counters it.
+  expect(await wheel.locator('.wheel-rotor').evaluate((el) => (el as HTMLElement).style.transform)).toBe('rotate(-30deg)');
+  expect(await wheel.locator('.wheel-label').first().evaluate((el) => (el as HTMLElement).style.transform)).toContain('rotate(30deg)');
+
+  // Major/Minor toggle keeps the slot but reads it as E minor.
+  await page.getByRole('button', { name: 'Minor', exact: true }).click();
+  await expect(status).toContainText('E minor');
+  await expect(wheel).toHaveAttribute('data-rotation', '-30');
+  await expect(cell('Em')).toHaveAttribute('data-key-state', 'assumed');
+  await expect(page.getByRole('button', { name: 'Key', exact: true })).toContainText('Auto · Em');
+  await page.getByRole('button', { name: 'Major', exact: true }).click();
+  await expect(status).toContainText('G major');
+  await page.getByRole('button', { name: 'Done' }).click();
+
+  // Committing an F chord rules G major out: the preference is dropped automatically.
+  await openGuitar(page);
+  await page.getByTestId('open-layer').click();
+  await recordOn(page);
+  await tapKey(page, 53);
+  await page.getByTestId('make-major').click();
+  await page.getByRole('button', { name: 'Back to guitar' }).click();
+  await page.getByRole('button', { name: 'Back to song' }).click();
+  await expect(page.getByRole('button', { name: 'Key', exact: true })).toContainText('Auto · C');
+  await page.getByRole('button', { name: 'Key', exact: true }).click();
+  await expect(status).toContainText('C major');
+  await expect(wheel).toHaveAttribute('data-rotation', '0');
+  await expect(cell('G')).toHaveAttribute('data-key-state', 'impossible');
+  await expect(cell('F')).toHaveAttribute('data-chord-state', 'usedDiatonic');
+  await expect(wheel.getByRole('button')).toHaveCount(2); // C major and A minor
 });
 
 test('locked instruments do not open an editor', async ({ page }) => {

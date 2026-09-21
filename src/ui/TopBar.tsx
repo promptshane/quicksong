@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import { transport } from '../audio/transport';
-import { NOTE_NAMES, inferKey, keyLabel } from '../model/music';
-import { applyTimeSignature, pitchClassHistogram } from '../model/song';
+import { buildKeyWheel } from '../model/keyWheel';
+import { keyLabel, keyName } from '../model/music';
+import { applyTimeSignature, setAutoKey, setAutoKeyPreference, setKeyTonality, setManualKey } from '../model/song';
 import { TIME_SIGNATURES, sameTimeSignature, timeSignatureLabel } from '../model/time';
-import type { ChordQuality, PitchClass } from '../model/types';
+import type { ChordQuality, MusicalKey } from '../model/types';
 import { useStore } from '../state/store';
+import { CircleOfFifths } from './CircleOfFifths';
 import { Sheet } from './Sheet';
 
 type Open = 'bpm' | 'time' | 'key' | null;
@@ -17,7 +19,12 @@ export function TopBar() {
   const commit = useStore((s) => s.commit);
   const [open, setOpen] = useState<Open>(null);
 
-  const guess = useMemo(() => inferKey(pitchClassHistogram(song)), [song]);
+  const wheel = useMemo(() => buildKeyWheel(song), [song]);
+  // Locking with nothing inferred yet pins whatever sits at 12 o'clock.
+  const lockTarget: MusicalKey = wheel.assumed ?? (wheel.tonality === 'major' ? { tonic: 0, quality: 'major' } : { tonic: 9, quality: 'minor' });
+
+  const tapKey = (key: MusicalKey) =>
+    commit((s) => (s.key.mode === 'manual' ? setManualKey(s, key) : setAutoKeyPreference(s, key)));
 
   const setBpm = (bpm: number) => {
     const clamped = Math.max(MIN_BPM, Math.min(MAX_BPM, Math.round(bpm)));
@@ -35,7 +42,7 @@ export function TopBar() {
           <b>{timeSignatureLabel(song.timeSignature)}</b>
         </button>
         <button className="chip" onClick={() => setOpen('key')} aria-label="Key">
-          Key <b>{keyLabel(song.key, guess)}</b>
+          Key <b>{keyLabel(song.key, wheel.assumed)}</b>
         </button>
       </div>
 
@@ -92,41 +99,61 @@ export function TopBar() {
       )}
 
       {open === 'key' && (
-        <Sheet title="Key" onClose={() => setOpen(null)}>
-          <button
-            className={`option ${song.key.mode === 'auto' ? 'selected' : ''}`}
-            onClick={() => commit((s) => ({ ...s, key: { mode: 'auto' } }))}
-          >
-            <span>Auto</span>
-            <small>
-              {guess
-                ? `Guessing ${NOTE_NAMES[guess.tonic]} ${guess.quality} · ${Math.round(guess.confidence * 100)}%`
-                : 'Add notes to infer a key'}
-            </small>
-          </button>
-          {(['major', 'minor'] as ChordQuality[]).map((quality) => (
-            <div key={quality} className="panel-section">
-              <div className="panel-label">{quality}</div>
-              <div className="option-grid">
-                {NOTE_NAMES.map((name, i) => {
-                  const selected =
-                    song.key.mode === 'manual' && song.key.tonic === i && song.key.quality === quality;
-                  return (
-                    <button
-                      key={name}
-                      className={`btn small ${selected ? 'active' : ''}`}
-                      onClick={() =>
-                        commit((s) => ({ ...s, key: { mode: 'manual', tonic: i as PitchClass, quality } }))
-                      }
-                    >
-                      {name}
-                      {quality === 'minor' ? 'm' : ''}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+        <Sheet title="Key" className="tall" onClose={() => setOpen(null)}>
+          <div className="key-status" data-testid="key-status">
+            <span className={`key-mode ${wheel.mode}`}>{wheel.mode === 'auto' ? 'Auto' : 'Manual'}</span>
+            {wheel.assumed ? (
+              <>
+                <span className="key-sep">·</span>
+                <b>{keyName(wheel.assumed)}</b>
+                {wheel.confidence !== null && (
+                  <small data-testid="key-confidence">{Math.round(wheel.confidence * 100)}%</small>
+                )}
+              </>
+            ) : (
+              <small>add notes or chords to infer a key</small>
+            )}
+          </div>
+
+          <CircleOfFifths wheel={wheel} onTapKey={tapKey} />
+
+          <div className="segmented" role="group" aria-label="Tonality">
+            {(['major', 'minor'] as ChordQuality[]).map((quality) => (
+              <button
+                key={quality}
+                className={wheel.tonality === quality ? 'active' : ''}
+                aria-pressed={wheel.tonality === quality}
+                onClick={() => commit((s) => setKeyTonality(s, quality))}
+              >
+                {quality === 'major' ? 'Major' : 'Minor'}
+              </button>
+            ))}
+          </div>
+
+          <div className="btn-row">
+            <button
+              className={`btn small ${wheel.mode === 'auto' ? 'active' : ''}`}
+              data-testid="key-auto"
+              aria-pressed={wheel.mode === 'auto'}
+              onClick={() => commit(setAutoKey)}
+            >
+              Auto
+            </button>
+            <button
+              className={`btn small ${wheel.mode === 'manual' ? 'active' : ''}`}
+              data-testid="key-lock"
+              aria-pressed={wheel.mode === 'manual'}
+              onClick={() => commit((s) => setManualKey(s, lockTarget))}
+            >
+              {wheel.mode === 'manual' ? `Locked · ${keyName(lockTarget)}` : `Lock ${keyName(lockTarget)}`}
+            </button>
+          </div>
+
+          <div className="panel-hint">
+            {wheel.mode === 'auto'
+              ? 'Tap a light-yellow key to assume it for now. Auto drops it if your material rules it out.'
+              : 'Key is locked. Tap any tonic on the wheel to change it.'}
+          </div>
         </Sheet>
       )}
     </>

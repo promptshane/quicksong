@@ -75,7 +75,8 @@ test('Record OFF: a live red key stays red even where guidance would dim it', as
   await page.getByRole('button', { name: 'Back to guitar' }).click();
   await page.getByRole('button', { name: 'Back to song' }).click();
   await page.getByRole('button', { name: 'Key' }).click();
-  await page.getByRole('button', { name: 'C#', exact: true }).click(); // C# major has no A
+  await page.getByRole('button', { name: 'Assume C# major' }).click(); // C# major has no A
+  await page.getByTestId('key-lock').click();
   await page.getByRole('button', { name: 'Done' }).click();
   await page.getByRole('button', { name: 'Guitar' }).click();
   await page.getByTestId('open-layer').click();

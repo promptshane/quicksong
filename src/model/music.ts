@@ -1,4 +1,4 @@
-import type { ChordQuality, KeySetting, PitchClass } from './types';
+import type { ChordQuality, KeySetting, MusicalKey, PitchClass, TriadQuality } from './types';
 
 export const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
 
@@ -36,13 +36,19 @@ export function chordIntervals(quality: ChordQuality): number[] {
   return quality === 'major' ? [0, 4, 7] : [0, 3, 7];
 }
 
-/** Human label for a root + quality, e.g. "Am". */
-export function chordName(root: PitchClass, quality: ChordQuality | 'note' | 'custom'): string {
+/** Human label for a root + quality, e.g. "Am" or "Bdim". */
+export function chordName(root: PitchClass, quality: TriadQuality | 'note' | 'custom'): string {
   const name = NOTE_NAMES[root];
   if (quality === 'major') return name;
   if (quality === 'minor') return `${name}m`;
+  if (quality === 'dim') return `${name}dim`;
   if (quality === 'note') return name;
   return `${name}?`;
+}
+
+/** Long-form key name, e.g. "C major" / "A minor". */
+export function keyName(key: MusicalKey): string {
+  return `${NOTE_NAMES[key.tonic]} ${key.quality}`;
 }
 
 /**
@@ -85,37 +91,47 @@ export interface KeyGuess {
   confidence: number;
 }
 
+export interface RankedKey {
+  key: MusicalKey;
+  /** Raw profile correlation, -1..1. Higher = better fit. */
+  score: number;
+}
+
 /**
- * Infer the most likely key from a pitch-class weight histogram
- * (index = pitch class, value = total duration or count).
- * Returns null when there is not enough material.
+ * Every major / minor key scored against a pitch-class weight histogram
+ * (index = pitch class, value = total duration or count), best first.
+ * Empty when there is no material to score.
  */
-export function inferKey(histogram: number[]): KeyGuess | null {
+export function rankKeys(histogram: number[]): RankedKey[] {
   const total = histogram.reduce((s, v) => s + v, 0);
-  if (total <= 0) return null;
-  let best: KeyGuess | null = null;
-  let second = -Infinity;
+  if (total <= 0) return [];
+  const out: RankedKey[] = [];
   for (let tonic = 0; tonic < 12; tonic++) {
     for (const quality of ['major', 'minor'] as const) {
       const profile = quality === 'major' ? MAJOR_PROFILE : MINOR_PROFILE;
       const rotated = histogram.map((_, i) => profile[((i - tonic) % 12 + 12) % 12]);
-      const score = correlation(histogram, rotated);
-      if (!best || score > best.confidence) {
-        if (best) second = best.confidence;
-        best = { tonic: tonic as PitchClass, quality, confidence: score };
-      } else if (score > second) {
-        second = score;
-      }
+      out.push({ key: { tonic: tonic as PitchClass, quality }, score: correlation(histogram, rotated) });
     }
   }
-  if (!best) return null;
-  // Confidence = how far the winner is ahead of the runner-up, squashed to 0..1.
-  const margin = Math.max(0, best.confidence - second);
-  return { ...best, confidence: Math.min(1, margin * 4) };
+  // Stable: ties keep tonic-then-major order.
+  return out.sort((a, b) => b.score - a.score);
 }
 
-export function keyLabel(key: KeySetting, guess: KeyGuess | null): string {
+/**
+ * Infer the most likely key from a pitch-class weight histogram.
+ * Returns null when there is not enough material.
+ */
+export function inferKey(histogram: number[]): KeyGuess | null {
+  const ranked = rankKeys(histogram);
+  if (ranked.length === 0) return null;
+  const [best, second] = ranked;
+  // Confidence = how far the winner is ahead of the runner-up, squashed to 0..1.
+  const margin = Math.max(0, best.score - (second?.score ?? -Infinity));
+  return { ...best.key, confidence: Math.min(1, margin * 4) };
+}
+
+export function keyLabel(key: KeySetting, assumed: MusicalKey | null): string {
   if (key.mode === 'manual') return chordName(key.tonic, key.quality);
-  if (!guess) return 'Auto';
-  return `Auto · ${chordName(guess.tonic, guess.quality)}`;
+  if (!assumed) return 'Auto';
+  return `Auto · ${chordName(assumed.tonic, assumed.quality)}`;
 }

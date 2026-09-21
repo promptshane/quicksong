@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { createSong } from '../model/song';
+import { createSong, reconcileKeyPreference } from '../model/song';
 import { eighthBeats, songBeats } from '../model/time';
 import type { Song } from '../model/types';
 import { loadSong, saveSongDebounced } from './persistence';
@@ -64,7 +64,8 @@ export const useStore = create<StoreState>((set, get) => ({
 
   commit: (fn) => {
     const { song, past, cursorBeat } = get();
-    const next = fn(song);
+    // Every edit may rule out a preferred Auto key; drop it in the same step.
+    const next = reconcileKeyPreference(fn(song));
     if (next === song) return;
     set({
       song: next,

@@ -20,8 +20,31 @@ export interface TimeSignature {
 
 export type ChordQuality = 'major' | 'minor';
 
+/** Triad qualities a key's diatonic chords can take. Only major/minor are playable in V1. */
+export type TriadQuality = ChordQuality | 'dim';
+
+/** A major or natural-minor key. C major and A minor are distinct keys. */
+export interface MusicalKey {
+  tonic: PitchClass;
+  quality: ChordQuality;
+}
+
 export type KeySetting =
-  | { mode: 'auto' }
+  | {
+      mode: 'auto';
+      /**
+       * Whether Auto reads the song as a major or minor tonal centre.
+       * Absent = major (songs saved before the toggle existed).
+       */
+      tonality?: ChordQuality;
+      /**
+       * "Assume this key for now": a still-plausible key the user tapped on
+       * the Circle of Fifths. Inference still decides which keys are possible;
+       * this only picks among them, and is dropped automatically as soon as
+       * committed material rules it out (see `reconcileKeyPreference`).
+       */
+      preference?: MusicalKey;
+    }
   | { mode: 'manual'; tonic: PitchClass; quality: ChordQuality };
 
 /** Shared fields for anything placed on the timeline. */

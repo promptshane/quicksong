@@ -1,4 +1,5 @@
 import { del, get, set } from 'idb-keyval';
+import { reconcileKeyPreference } from '../model/song';
 import type { Song } from '../model/types';
 
 /**
@@ -21,10 +22,10 @@ export async function loadSong(): Promise<Song | null> {
       for (const layer of stored.guitar.layers) {
         for (const event of layer.events) lastEnd = Math.max(lastEnd, event.start + event.duration);
       }
-      return { ...stored, timelineBars: Math.max(1, Math.ceil(lastEnd / perBar - 1e-6)) };
+      return reconcileKeyPreference({ ...stored, timelineBars: Math.max(1, Math.ceil(lastEnd / perBar - 1e-6)) });
     }
 
-    return stored;
+    return reconcileKeyPreference(stored);
   } catch (err) {
     console.warn('QuickSong: could not load saved song', err);
     return null;
