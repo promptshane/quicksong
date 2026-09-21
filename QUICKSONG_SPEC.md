@@ -373,7 +373,11 @@ The Projects screen shows:
 Interaction:
 
 - **tap** a project → open it (Song Home);
-- **hold / long-press** a project → contextual actions: **Rename**, **Duplicate**, **Delete**. Once the menu appears, releasing the finger must not open the project. This is the same hold gesture used for timeline event deletion and guitar layer duplication.
+- each project card has a compact **Play / Stop** control on the far right that previews the saved song directly from Projects without opening it;
+- project preview loops continuously until stopped;
+- a circular progress indicator around the preview control shows the remaining time in the current loop and resets each time the loop restarts;
+- starting another project preview stops the previous one;
+- **hold / long-press** a project → contextual actions: **Rename**, **Duplicate**, **Delete**. Once the menu appears, releasing the finger must not open the project. The preview control must not trigger the hold/open gesture. This is the same hold gesture used for timeline event deletion and guitar layer duplication.
 
 Navigation flow:
 
@@ -386,6 +390,8 @@ Song Home shows the project name and a **‹ Projects** back control. Returning 
 ### New Project
 
 **+ New Project** creates a fresh song with the default settings (`createSong()`), names it **Untitled Project** — or **Untitled Project 2**, **Untitled Project 3**, … when that name is taken — and opens it immediately.
+
+A completely untouched default project carries no user information and should not remain in the project library. If the user backs out of a newly created Untitled Project without changing any song setting, layer, event, or timeline slot, it is discarded. If the app is closed before the user backs out, abandoned pristine Untitled projects are pruned on the next launch. Any real song change makes the project persistent.
 
 ### Rename
 
