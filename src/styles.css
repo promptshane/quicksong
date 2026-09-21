@@ -214,9 +214,16 @@ input[type='range'] {
 
 /* ---- home instrument rows ---------------------------------------------- */
 
-.rows {
+.screen[data-screen='home'] .screen-body {
   display: flex;
-  flex-direction: column;
+  overflow: hidden;
+}
+
+.rows {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: repeat(5, minmax(0, 1fr));
   gap: 8px;
   padding: 8px 12px;
 }
@@ -224,7 +231,8 @@ input[type='range'] {
   display: flex;
   align-items: stretch;
   gap: 10px;
-  min-height: 64px;
+  min-height: 0;
+  height: 100%;
   border-radius: var(--radius);
   background: var(--bg-2);
   padding: 8px;
@@ -330,7 +338,12 @@ input[type='range'] {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 10px 12px calc(10px + var(--safe-bottom));
+  /*
+   * Keep controls clear of the iPhone home indicator, but do not waste a
+   * second full padding block beneath them. This moves the transport/project
+   * action lower and gives the main content more vertical room.
+   */
+  padding: 4px 12px max(8px, calc(var(--safe-bottom) - 8px));
   border-top: 1px solid var(--line);
   background: var(--bg-2);
 }
