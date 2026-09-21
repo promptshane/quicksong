@@ -1,4 +1,4 @@
-import { useStore } from '../state/store';
+import { selectActiveProject, useStore } from '../state/store';
 import { Overview } from './Overview';
 import { PlayButton } from './PlayButton';
 import { toast } from './toastStore';
@@ -15,9 +15,22 @@ const INSTRUMENTS = [
 export function HomeScreen() {
   const song = useStore((s) => s.song);
   const setView = useStore((s) => s.setView);
+  const project = useStore(selectActiveProject);
+  const closeProject = useStore((s) => s.closeProject);
 
   return (
     <div className="screen" data-screen="home">
+      <div className="header">
+        <div className="header-side">
+          <button className="btn ghost" onClick={() => void closeProject()} aria-label="Back to projects">
+            ‹ Projects
+          </button>
+        </div>
+        <div className="header-title" data-testid="project-title">
+          {project?.name ?? 'Song'}
+        </div>
+        <div className="header-side right" />
+      </div>
       <TopBar />
       <div className="screen-body">
         <div className="rows">

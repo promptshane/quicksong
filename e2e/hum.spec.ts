@@ -30,6 +30,8 @@ test.beforeEach(async ({ page }) => {
   });
   await page.goto('/');
   await expect(page.locator('.app[data-hydrated="true"]')).toBeVisible();
+  await page.getByTestId('new-project').click();
+  await expect(page.locator('[data-screen="home"]')).toBeVisible();
 });
 
 test('Record OFF: humming lights the matching key red and commits nothing', async ({ page }) => {

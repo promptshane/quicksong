@@ -48,10 +48,11 @@ src/
     chords.ts     Standard guitar voicings (open + E/A-shape barre), six-string logic
     time.ts       Beats/bars, eighth-note grid, time signatures
     song.ts       Factories + immutable update helpers
+    projects.ts   ProjectMeta / ProjectRecord, default + copy naming, deep song clone, stored-song normalisation
   state/
-    store.ts      zustand store: song + snapshot-based undo/redo history + UI state
+    store.ts      zustand store: projects list, active project, song + snapshot-based undo/redo, UI state
     actions.ts    Every editing action as one undoable step (insert, chordify, mute string, ...)
-    persistence.ts IndexedDB (idb-keyval) load/save with debounce
+    persistence.ts IndexedDB (idb-keyval): per-project records + index, legacy migration, id-bound debounced autosave
   audio/
     engine.ts     AudioContext lifecycle, iOS unlock, `Instrument` interface
     synth.ts      V1 placeholder instrument (pluck synth) + metronome click
@@ -62,7 +63,7 @@ src/
     mic.ts        getUserMedia + AnalyserNode frame capture
     segmenter.ts  Pure: pitch frames -> DetectedNote[]; quantise to the eighth grid
     useHumming.ts One pipeline, two modes: 'preview' (live note only) / 'record' (a take)
-  ui/           React components: Home, GuitarFocus, LayerEditor + contextual panels
+  ui/           React components: Projects, Home, GuitarFocus, LayerEditor + contextual panels
     CircleOfFifths.tsx    SVG wheel (3 rings) that rotates the assumed key to 12 o'clock; colours from keyWheel states
     useKeyboardFollow.ts  Moves the keyboard to keep the hummed note visible (with hysteresis)
 ```
@@ -72,6 +73,7 @@ Key decisions:
 - **Preview vs Record.** `recording` is session-only UI state (never persisted, reset whenever the view changes). With Record OFF the keyboard and humming only audition/detect — they never touch the song, so they cannot create history entries or influence key inference. Record ON routes the same inputs through `insertAtCursor` / `insertDetectedNotes`. Explicit edits to existing material (Major/Minor, "Add to chord", string mutes, …) never depend on Record.
 - **Key guidance is set-based.** `keys.ts` keeps every major / natural-minor key whose scale contains all committed pitch classes, then dims pitch classes that appear in none of them. A manual key is treated as the only candidate. With no evidence, or material that fits no key at all, nothing is dimmed. Dimmed keys stay fully playable.
 - **Assumed key vs plausible keys.** The Key panel is an interactive Circle of Fifths. `resolveAssumedKey` picks one key to read the song in: the manual key, else an Auto *preference* the user tapped on the wheel (kept only while it is still a candidate), else the best-scoring candidate with the chosen Major/Minor tonality. The preference lives on `song.key` (`{ mode: 'auto', tonality, preference }`) and `store.commit` runs `reconcileKeyPreference` after every edit so an impossible preference is dropped in the same undoable step. Chord cells are coloured by use + membership in the assumed key (`chordState`); tonic cells get a separate yellow halo for key state, so a used tonic can be red *and* the assumed key.
+- **Projects and autosave.** The app always launches on the Projects screen. Each project is one IndexedDB record (`quicksong:project:v1:<id>`) plus an entry in a metadata index; the pre-projects single song under `quicksong:song:v1` is migrated once into a fixed-id project and the legacy key deleted. `hydrateStore` subscribes to `song` changes and schedules a debounced save bound to the *active project id and song snapshot at that moment*; a pending save for another project is written immediately rather than replaced, and `openProject`/`createProject`/`closeProject` flush first. Autosave only reads `song`, never `past`/`future`, so undo/redo is untouched by when saves land. Opening a project starts a fresh session (empty history, no selection, cursor 0, Record off).
 - **Timeline length is content-derived.** `songBars` = bar of the last event's end + one empty bar (minimum one bar); the cursor is clamped into that range after every edit.
 
 - **Time is in beats.** Event `start`/`duration` are beats of the time signature's beat unit. The eighth-note grid is derived (`eighthBeats`). Changing time signature resizes per-bar patterns without moving events.

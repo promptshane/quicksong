@@ -4,6 +4,7 @@ import { useStore } from './state/store';
 import { GuitarFocus } from './ui/GuitarFocus';
 import { HomeScreen } from './ui/HomeScreen';
 import { LayerEditor } from './ui/LayerEditor';
+import { ProjectsScreen } from './ui/ProjectsScreen';
 import { ToastHost } from './ui/Toast';
 
 const BUILD_TIME = import.meta.env.VITE_BUILD_TIME as string | undefined;
@@ -36,7 +37,8 @@ export function App() {
   }, []);
 
   let screen;
-  if (view.name === 'home') screen = <HomeScreen />;
+  if (view.name === 'projects') screen = <ProjectsScreen />;
+  else if (view.name === 'home') screen = <HomeScreen />;
   else if (view.name === 'guitar') screen = <GuitarFocus />;
   else screen = <LayerEditor layerId={view.layerId} />;
 

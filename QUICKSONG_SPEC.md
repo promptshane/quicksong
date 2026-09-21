@@ -356,6 +356,74 @@ For V1, audio quality only needs to be convincing enough that the user clearly p
 
 ---
 
+## 6. Projects
+
+QuickSong stores multiple saved projects. A project is a named song with its own settings, layers and events.
+
+### Projects Homepage
+
+On launch the app **always opens to the Projects screen**. It never jumps straight into the last-edited song.
+
+The Projects screen shows:
+
+- the app title;
+- every saved project as a simple rounded card showing only the **project name**;
+- a clear **+ New Project** action.
+
+Interaction:
+
+- **tap** a project → open it (Song Home);
+- **hold / long-press** a project → contextual actions: **Rename**, **Duplicate**, **Delete**. Once the menu appears, releasing the finger must not open the project. This is the same hold gesture used for timeline event deletion and guitar layer duplication.
+
+Navigation flow:
+
+```
+Projects → (tap project) → Song Home → Guitar → Layer
+```
+
+Song Home shows the project name and a **‹ Projects** back control. Returning to Projects persists the current project first.
+
+### New Project
+
+**+ New Project** creates a fresh song with the default settings (`createSong()`), names it **Untitled Project** — or **Untitled Project 2**, **Untitled Project 3**, … when that name is taken — and opens it immediately.
+
+### Rename
+
+Rename uses a small sheet consistent with the rest of the app. The name is trimmed; blank names are rejected. Renaming never changes the project's ID or song data. Duplicate names are allowed; names are labels, not identifiers.
+
+### Duplicate
+
+Duplicate creates a completely independent project: a new ID and a deep copy of the song, sharing no mutable data with the source. It is named **Song Name Copy**, then **Song Name Copy 2**, … The app stays on the Projects screen after duplicating.
+
+### Delete
+
+Delete asks for confirmation. Afterwards the project is removed from storage and from the list. If the deleted project was somehow open, the app returns safely to Projects.
+
+### Persistence and Autosave
+
+Each project is stored as its own record (stable ID, name, song, created/updated timestamps) alongside a lightweight index used to list projects without loading songs. Project names are never used as IDs.
+
+Projects **autosave continuously** while being edited. Autosave is persistence only:
+
+- it never clears or trims the undo stack;
+- it never clears redo history;
+- it never creates undo entries;
+- an edit remains undoable even after it has been persisted.
+
+Example: the user deletes a chord → autosave persists that state → the user presses Undo → the chord comes back normally → the restored state autosaves in turn. Undo/Redo is an in-memory editing history for the currently open project and is independent of persistence timing.
+
+### Switching Projects
+
+When switching projects the app saves the current project, loads the selected one, and resets project-specific transient state: selection, cursor, current editor view and Record state. Undo/Redo history is per editing session and is reset when a project is opened; history is never carried from one project into another and is not persisted.
+
+Pending debounced saves are bound to the project ID and song snapshot they were scheduled for, and are flushed when switching, so a delayed save can never write one project's song into another.
+
+### Legacy Migration
+
+Earlier versions saved a single song under one storage key. On first launch after the update that song is migrated, unchanged, into a project named **Untitled Project**. The migration is idempotent: the migrated project uses a fixed ID and the legacy key is removed after a successful migration, so relaunching never creates duplicates. With no legacy song, Projects starts empty.
+
+---
+
 ## Current Design Principle
 
 QuickSong is intended to make it extremely fast to turn a song heard in the user's head into something playable.

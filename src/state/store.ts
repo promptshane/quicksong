@@ -1,14 +1,34 @@
 import { create } from 'zustand';
+import {
+  createProjectRecord,
+  duplicateProjectRecord,
+  nextUntitledName,
+  normalizeProjectName,
+  type ProjectMeta,
+} from '../model/projects';
 import { createSong, reconcileKeyPreference } from '../model/song';
 import { eighthBeats, songBeats } from '../model/time';
 import type { Song } from '../model/types';
-import { loadSong, saveSongDebounced } from './persistence';
+import {
+  cancelPendingSave,
+  deleteProjectRecord,
+  flushPendingSave,
+  loadProject,
+  loadProjectIndex,
+  renameProjectRecord,
+  saveProject,
+  scheduleProjectSave,
+} from './persistence';
 
-export type View = { name: 'home' } | { name: 'guitar' } | { name: 'layer'; layerId: string };
+export type View = { name: 'projects' } | { name: 'home' } | { name: 'guitar' } | { name: 'layer'; layerId: string };
 
 const HISTORY_LIMIT = 200;
 
 interface StoreState {
+  /** Every saved project, most recently updated first. Never includes song data. */
+  projects: ProjectMeta[];
+  /** The project `song` belongs to; null on the Projects screen. */
+  activeProjectId: string | null;
   song: Song;
   past: Song[];
   future: Song[];
@@ -43,6 +63,17 @@ interface StoreState {
   setCursor: (beat: number) => void;
   setKeyboardBase: (midi: number) => void;
   setRecording: (on: boolean) => void;
+
+  /** Flush the current project's pending save, then load another one. */
+  openProject: (id: string) => Promise<boolean>;
+  /** New project with default settings, opened immediately. Returns its id. */
+  createProject: () => Promise<string>;
+  /** Persist and return to the Projects screen. */
+  closeProject: () => Promise<void>;
+  renameProject: (id: string, name: string) => Promise<boolean>;
+  /** Independent copy; stays on the Projects screen. Returns the new id. */
+  duplicateProject: (id: string) => Promise<string | null>;
+  deleteProject: (id: string) => Promise<void>;
 }
 
 /** Keep the cursor inside the (content-derived) song length. */
@@ -50,13 +81,33 @@ function clampCursor(cursorBeat: number, song: Song): number {
   return Math.max(0, Math.min(cursorBeat, songBeats(song) - eighthBeats(song.timeSignature)));
 }
 
+function byRecent(projects: ProjectMeta[]): ProjectMeta[] {
+  return [...projects].sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt);
+}
+
+/** Everything that belongs to one editing session and must not leak into the next project. */
+function freshSession(song: Song, activeProjectId: string | null, view: View) {
+  return {
+    song,
+    activeProjectId,
+    past: [] as Song[],
+    future: [] as Song[],
+    view,
+    selectedEventId: null,
+    cursorBeat: 0,
+    recording: false,
+  };
+}
+
 export const useStore = create<StoreState>((set, get) => ({
+  projects: [],
+  activeProjectId: null,
   song: createSong(),
   past: [],
   future: [],
   hydrated: false,
 
-  view: { name: 'home' },
+  view: { name: 'projects' },
   selectedEventId: null,
   cursorBeat: 0,
   keyboardBase: 48,
@@ -96,17 +147,85 @@ export const useStore = create<StoreState>((set, get) => ({
   setCursor: (cursorBeat) => set({ cursorBeat: clampCursor(cursorBeat, get().song) }),
   setKeyboardBase: (keyboardBase) => set({ keyboardBase }),
   setRecording: (recording) => set({ recording }),
+
+  openProject: async (id) => {
+    await flushPendingSave();
+    const record = await loadProject(id);
+    if (!record) {
+      // Gone from storage: drop it from the list rather than opening nothing.
+      set({ projects: get().projects.filter((p) => p.id !== id) });
+      return false;
+    }
+    set(freshSession(record.song, record.id, { name: 'home' }));
+    return true;
+  },
+
+  createProject: async () => {
+    await flushPendingSave();
+    const record = createProjectRecord(nextUntitledName(get().projects.map((p) => p.name)), createSong());
+    const projects = await saveProject(record);
+    set({ projects: byRecent(projects), ...freshSession(record.song, record.id, { name: 'home' }) });
+    return record.id;
+  },
+
+  closeProject: async () => {
+    await flushPendingSave();
+    const projects = byRecent(await loadProjectIndex());
+    set({ projects, ...freshSession(createSong(), null, { name: 'projects' }) });
+  },
+
+  renameProject: async (id, rawName) => {
+    const name = normalizeProjectName(rawName);
+    if (!name) return false;
+    const projects = await renameProjectRecord(id, name);
+    if (!projects) return false;
+    set({ projects: byRecent(projects) });
+    return true;
+  },
+
+  duplicateProject: async (id) => {
+    await flushPendingSave();
+    const source = await loadProject(id);
+    if (!source) return null;
+    const copy = duplicateProjectRecord(source, get().projects.map((p) => p.name));
+    const projects = await saveProject(copy);
+    set({ projects: byRecent(projects) });
+    return copy.id;
+  },
+
+  deleteProject: async (id) => {
+    cancelPendingSave(id);
+    const projects = byRecent(await deleteProjectRecord(id));
+    if (get().activeProjectId === id) {
+      set({ projects, ...freshSession(createSong(), null, { name: 'projects' }) });
+    } else {
+      set({ projects });
+    }
+  },
 }));
 
-/** Load the saved song (if any) and start persisting changes. */
+let unsubscribeAutosave: (() => void) | null = null;
+
+/**
+ * Load the project list (migrating a legacy single song) and start
+ * autosaving the active project's song. The app always starts on Projects.
+ *
+ * Autosave is persistence only: it watches `song` and never reads or writes
+ * `past` / `future`, so undo and redo are unaffected by when a save lands.
+ */
 export async function hydrateStore(): Promise<void> {
-  const saved = await loadSong();
-  if (saved) useStore.setState({ song: saved, past: [], future: [] });
-  useStore.setState({ hydrated: true });
-  useStore.subscribe((state, prev) => {
-    if (state.hydrated && state.song !== prev.song) saveSongDebounced(state.song);
+  const projects = byRecent(await loadProjectIndex());
+  useStore.setState({ projects, ...freshSession(createSong(), null, { name: 'projects' }), hydrated: true });
+  unsubscribeAutosave?.();
+  unsubscribeAutosave = useStore.subscribe((state, prev) => {
+    if (!state.hydrated || state.song === prev.song) return;
+    // A change of active project swaps the song in wholesale; that is a load,
+    // not an edit, so there is nothing to save.
+    if (!state.activeProjectId || state.activeProjectId !== prev.activeProjectId) return;
+    scheduleProjectSave(state.activeProjectId, state.song);
   });
 }
 
 export const selectCanUndo = (s: StoreState) => s.past.length > 0;
 export const selectCanRedo = (s: StoreState) => s.future.length > 0;
+export const selectActiveProject = (s: StoreState) => s.projects.find((p) => p.id === s.activeProjectId) ?? null;

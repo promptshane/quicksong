@@ -10,6 +10,10 @@ test.beforeEach(async ({ page }) => {
   page.on('pageerror', (err) => consoleErrors.push(`pageerror: ${err.message}`));
   await page.goto('/');
   await expect(page.locator('.app[data-hydrated="true"]')).toBeVisible();
+  // The app launches on Projects; every song-level test starts in a fresh project.
+  await expect(page.locator('[data-screen="projects"]')).toBeVisible();
+  await page.getByTestId('new-project').click();
+  await expect(page.locator('[data-screen="home"]')).toBeVisible();
 });
 
 test.afterEach(() => {
@@ -102,6 +106,7 @@ test('song settings: BPM, time signature and key', async ({ page }) => {
   await page.waitForTimeout(600);
   await page.reload();
   await expect(page.locator('.app[data-hydrated="true"]')).toBeVisible();
+  await page.locator('[data-project-card]').click();
   await expect(page.getByRole('button', { name: 'Key', exact: true })).toHaveText(/Key\s*Am$/);
 });
 
@@ -460,6 +465,10 @@ test('song persists across reload and home shows layers', async ({ page }) => {
   await page.waitForTimeout(500); // debounced save
   await page.reload();
   await expect(page.locator('.app[data-hydrated="true"]')).toBeVisible();
+  // Launch always lands on Projects, never straight back into the song.
+  await expect(page.locator('[data-screen="projects"]')).toBeVisible();
+  await page.locator('[data-project-card]').click();
+  await expect(page.locator('[data-screen="home"]')).toBeVisible();
   await expect(page.locator('[data-instrument="guitar"] .overview .clip')).toHaveCount(2);
 
   // Delete the layer
