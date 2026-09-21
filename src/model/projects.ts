@@ -23,7 +23,7 @@ export const DEFAULT_PROJECT_NAME = 'Untitled Project';
 
 /** Auto-generated untitled names are disposable until the song contains information. */
 export function isDefaultProjectName(name: string): boolean {
-  return /^Untitled Project(?: [2-9]\d*)?$/.test(name.trim());
+  return /^Untitled Project(?: (?:[2-9]|[1-9]\d+))?$/.test(name.trim());
 }
 
 /**
