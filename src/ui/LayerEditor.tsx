@@ -3,7 +3,7 @@ import { transport, useTransport } from '../audio/transport';
 import { activeStringNumbers } from '../model/chords';
 import { dimmedPitchClasses } from '../model/keys';
 import { midiToName } from '../model/music';
-import { findLayer, usedPitchClasses } from '../model/song';
+import { LAYER_TYPE_LABELS, convertChordLayerType, findLayer, usedPitchClasses } from '../model/song';
 import { useHumming } from '../pitch/useHumming';
 import {
   addToneToSelectedChord,
@@ -33,6 +33,7 @@ export function LayerEditor({ layerId }: { layerId: string }) {
   const selectedId = useStore((s) => s.selectedEventId);
   const cursor = useStore((s) => s.cursorBeat);
   const setView = useStore((s) => s.setView);
+  const commit = useStore((s) => s.commit);
   const undo = useStore((s) => s.undo);
   const redo = useStore((s) => s.redo);
   const canUndo = useStore(selectCanUndo);
@@ -44,6 +45,7 @@ export function LayerEditor({ layerId }: { layerId: string }) {
   const playing = useTransport((s) => s.playing);
 
   const [showKeys, setShowKeys] = useState(true);
+  const [showLayerType, setShowLayerType] = useState(false);
   const [targetChoice, setTarget] = useState<InputTarget>('new');
 
   const selected = layer?.events.find((e) => e.id === selectedId) ?? null;
@@ -134,7 +136,19 @@ export function LayerEditor({ layerId }: { layerId: string }) {
             ‹ Guitar
           </button>
         </div>
-        <div className="header-title">{layer.name}</div>
+        {layer.type === 'single' ? (
+          <div className="header-title">{layer.name}</div>
+        ) : (
+          <button
+            className="header-title layer-type-title"
+            onClick={() => setShowLayerType(true)}
+            aria-label="Change layer type"
+            data-testid="change-layer-type"
+          >
+            <span>{layer.name}</span>
+            <span className="layer-type-chevron" aria-hidden>⌄</span>
+          </button>
+        )}
         <div className="header-side right">
           <button className="btn icon ghost" onClick={undo} disabled={!canUndo} aria-label="Undo" data-testid="undo">
             ↶
@@ -257,6 +271,30 @@ export function LayerEditor({ layerId }: { layerId: string }) {
           Keys
         </button>
       </div>
+
+      {showLayerType && layer.type !== 'single' && (
+        <Sheet title="Layer type" onClose={() => setShowLayerType(false)}>
+          <div className="option-list">
+            {(['strum', 'picked'] as const).map((type) => (
+              <button
+                key={type}
+                className={`option ${layer.type === type ? 'selected' : ''}`}
+                onClick={() => {
+                  if (type !== layer.type) {
+                    if (humActive) hum.stop();
+                    commit((s) => convertChordLayerType(s, layerId, type));
+                  }
+                  setShowLayerType(false);
+                }}
+                data-layer-type-choice={type}
+              >
+                <span>{LAYER_TYPE_LABELS[type]}</span>
+                <small>{type === 'strum' ? 'Full chord strumming' : 'One string at a time'}</small>
+              </button>
+            ))}
+          </div>
+        </Sheet>
+      )}
 
       {hum.state.error && (
         <Sheet title="Microphone" onClose={hum.clearError}>
