@@ -289,6 +289,10 @@ A new guitar layer asks the user to choose:
 - **Type 1B — Picked Chord**
 - **Type 2 — Single Notes**
 
+Existing guitar layers can be duplicated from the Guitar overview with a long-press. The duplicate should preserve the layer's musical content/settings, receive independent IDs, and appear immediately after the source so both layers can play simultaneously.
+
+For chord layers, the layer title in Layer Focus is interactive. The user can switch an existing layer between **Strummed Chords** and **Picked Chords** without recreating or losing its chord events, voicings, positions, durations, velocities, volume, or mute state.
+
 ### Layer Focus
 
 Once a layer is selected, the app should focus only on the controls relevant to that layer.
