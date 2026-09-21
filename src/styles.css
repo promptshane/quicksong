@@ -73,15 +73,16 @@ input[type='range'] {
 }
 
 /*
- * iOS standalone PWAs can report 100dvh as the safe layout viewport rather
- * than the full physical screen. With viewport-fit=cover that leaves the
- * bottom home-indicator inset outside .app as an unused strip. Extend the
- * app by exactly that inset in standalone mode; the bottom controls already
- * account for --safe-bottom, so they remain clear of the home indicator.
+ * Installed iOS PWAs with viewport-fit=cover incorrectly resolve dynamic
+ * viewport units to the safe-area-sized layout viewport. In standalone mode
+ * WebKit's legacy vh unit is the one that includes the full edge-to-edge
+ * canvas. Do not rebuild that height by adding an inset: the reported height
+ * can exclude more than the bottom inset, and the insets belong only on the
+ * controls that must stay clear of the hardware.
  */
 @media (display-mode: standalone) and (-webkit-touch-callout: none) {
   .app {
-    height: calc(100dvh + var(--safe-bottom));
+    height: 100vh;
   }
 }
 

@@ -18,6 +18,23 @@ test.afterEach(() => {
 
 const cards = (page: Page) => page.locator('[data-project-card]');
 
+async function expectAppAndBottomBarToReachViewportBottom(page: Page) {
+  const geometry = await page.evaluate(() => {
+    const app = document.querySelector<HTMLElement>('.app');
+    const bottomBar = document.querySelector<HTMLElement>('.bottombar');
+    if (!app || !bottomBar) throw new Error('App shell or bottom bar is missing');
+
+    return {
+      viewportBottom: window.innerHeight,
+      appBottom: app.getBoundingClientRect().bottom,
+      bottomBarBottom: bottomBar.getBoundingClientRect().bottom,
+    };
+  });
+
+  expect(Math.abs(geometry.appBottom - geometry.viewportBottom)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.bottomBarBottom - geometry.appBottom)).toBeLessThanOrEqual(1);
+}
+
 /** Touch-and-hold, including the click a real finger lift produces afterwards. */
 async function longPress(page: Page, locator: Locator, withClick = true) {
   const box = await locator.boundingBox();
@@ -42,6 +59,37 @@ test('launches to an empty Projects screen at iPhone width', async ({ page }) =>
   await expect(page.locator('.empty-state')).toContainText('No projects yet');
   await expect(page.getByTestId('new-project')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
+test('Projects and Song Home paint their bottom bars to the viewport edge', async ({ page }) => {
+  await expect(page.locator('[data-screen="projects"]')).toBeVisible();
+  await expectAppAndBottomBarToReachViewportBottom(page);
+
+  await page.getByTestId('new-project').click();
+  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+  await expectAppAndBottomBarToReachViewportBottom(page);
+
+  await page.setViewportSize({ width: 844, height: 390 });
+  await expectAppAndBottomBarToReachViewportBottom(page);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expectAppAndBottomBarToReachViewportBottom(page);
+
+  // Playwright cannot install an iOS PWA, but keep the WebKit-specific
+  // standalone override covered through the stylesheet WebKit actually read.
+  const standaloneAppHeight = await page.evaluate(() => {
+    for (const sheet of Array.from(document.styleSheets)) {
+      for (const rule of Array.from(sheet.cssRules)) {
+        if (!(rule instanceof CSSMediaRule) || !rule.conditionText.includes('display-mode: standalone')) continue;
+        for (const nestedRule of Array.from(rule.cssRules)) {
+          if (nestedRule instanceof CSSStyleRule && nestedRule.selectorText === '.app') {
+            return nestedRule.style.height;
+          }
+        }
+      }
+    }
+    return null;
+  });
+  expect(standaloneAppHeight).toBe('100vh');
 });
 
 test('new project opens Song Home; ‹ Projects returns and the project is listed', async ({ page }) => {
