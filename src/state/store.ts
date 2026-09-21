@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import {
   createProjectRecord,
   duplicateProjectRecord,
+  isDisposableEmptyProject,
   nextUntitledName,
   normalizeProjectName,
   type ProjectMeta,
@@ -15,6 +16,7 @@ import {
   flushPendingSave,
   loadProject,
   loadProjectIndex,
+  pruneDisposableProjects,
   renameProjectRecord,
   saveProject,
   scheduleProjectSave,
@@ -169,7 +171,18 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   closeProject: async () => {
+    const { activeProjectId, song, projects: currentProjects } = get();
     await flushPendingSave();
+
+    // A freshly-created Untitled Project with no user information should not
+    // survive simply because the user backed out of it.
+    if (activeProjectId) {
+      const meta = currentProjects.find((p) => p.id === activeProjectId);
+      if (meta && isDisposableEmptyProject({ name: meta.name, song })) {
+        await deleteProjectRecord(activeProjectId);
+      }
+    }
+
     const projects = byRecent(await loadProjectIndex());
     set({ projects, ...freshSession(createSong(), null, { name: 'projects' }) });
   },
@@ -214,7 +227,10 @@ let unsubscribeAutosave: (() => void) | null = null;
  * `past` / `future`, so undo and redo are unaffected by when a save lands.
  */
 export async function hydrateStore(): Promise<void> {
-  const projects = byRecent(await loadProjectIndex());
+  // Migrate legacy storage first, then discard any abandoned default project
+  // whose song still contains absolutely no user information.
+  await loadProjectIndex();
+  const projects = byRecent(await pruneDisposableProjects());
   useStore.setState({ projects, ...freshSession(createSong(), null, { name: 'projects' }), hydrated: true });
   unsubscribeAutosave?.();
   unsubscribeAutosave = useStore.subscribe((state, prev) => {
