@@ -73,14 +73,14 @@ input[type='range'] {
 }
 
 /*
- * Installed iOS PWAs with viewport-fit=cover size 100vh to the area below
- * the status bar, even though the page starts at the physical top edge. Add
- * that omitted top inset back to make the shell reach the physical bottom.
- * The bottom inset remains control padding only, so it is not counted twice.
+ * Installed iOS PWAs with viewport-fit=cover resolve dynamic viewport units
+ * to the inset layout area. Legacy vh covers the full standalone canvas.
+ * Keep this keyed only to display mode: -webkit-touch-callout is a CSS
+ * property, not a media feature, so including it made this rule never match.
  */
-@media (display-mode: standalone) and (-webkit-touch-callout: none) {
+@media (display-mode: standalone) {
   .app {
-    height: calc(100vh + var(--safe-top));
+    height: 100vh;
   }
 }
 

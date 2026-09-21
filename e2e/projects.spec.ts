@@ -76,20 +76,33 @@ test('Projects and Song Home paint their bottom bars to the viewport edge', asyn
 
   // Playwright cannot install an iOS PWA, but keep the WebKit-specific
   // standalone override covered through the stylesheet WebKit actually read.
-  const standaloneAppHeight = await page.evaluate(() => {
-    for (const sheet of Array.from(document.styleSheets)) {
-      for (const rule of Array.from(sheet.cssRules)) {
-        if (!(rule instanceof CSSMediaRule) || !rule.conditionText.includes('display-mode: standalone')) continue;
-        for (const nestedRule of Array.from(rule.cssRules)) {
-          if (nestedRule instanceof CSSStyleRule && nestedRule.selectorText === '.app') {
-            return nestedRule.style.height;
-          }
+  // A CSS property is not a media feature; the former combined query could
+  // never activate the standalone height override.
+  expect(await page.evaluate(() => window.matchMedia('(-webkit-touch-callout: none)').matches)).toBe(false);
+
+  const standaloneAppRule = await page.evaluate(() => {
+    function findRule(rules: CSSRuleList, inStandalone = false): string | null {
+      for (const rule of Array.from(rules)) {
+        if (rule instanceof CSSMediaRule) {
+          const found = findRule(rule.cssRules, inStandalone || rule.conditionText.includes('display-mode: standalone'));
+          if (found) return found;
+        } else if (rule instanceof CSSSupportsRule) {
+          const found = findRule(rule.cssRules, inStandalone);
+          if (found) return found;
+        } else if (rule instanceof CSSStyleRule && inStandalone && rule.selectorText === '.app') {
+          return rule.style.height;
         }
       }
+      return null;
+    }
+
+    for (const sheet of Array.from(document.styleSheets)) {
+      const height = findRule(sheet.cssRules);
+      if (height) return height;
     }
     return null;
   });
-  expect(standaloneAppHeight).toBe('calc(100vh + var(--safe-top))');
+  expect(standaloneAppRule).toBe('100vh');
 });
 
 test('new project opens Song Home; ‹ Projects returns and the project is listed', async ({ page }) => {
