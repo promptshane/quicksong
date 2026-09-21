@@ -1,6 +1,7 @@
 import { del, get, set } from 'idb-keyval';
 import {
   DEFAULT_PROJECT_NAME,
+  isDisposableEmptyProject,
   isStoredSong,
   normalizeStoredSong,
   uniqueProjectName,
@@ -119,6 +120,37 @@ export function loadProjectIndex(): Promise<ProjectMeta[]> {
       await storage.del(LEGACY_SONG_KEY);
     }
     return index;
+  });
+}
+
+/**
+ * Remove default-named projects whose songs are still completely pristine.
+ * Called on launch so a project created and then abandoned by closing the PWA
+ * never comes back as an empty "Untitled Project".
+ */
+export function pruneDisposableProjects(): Promise<ProjectMeta[]> {
+  return serialized(async () => {
+    const index = await readIndex();
+    const kept: ProjectMeta[] = [];
+    let changed = false;
+
+    for (const meta of index) {
+      const record = await storage.get<ProjectRecord>(projectKey(meta.id));
+      if (!record || !isStoredSong(record.song)) {
+        kept.push(meta);
+        continue;
+      }
+      const normalized = { ...record, song: normalizeStoredSong(record.song) };
+      if (isDisposableEmptyProject(normalized)) {
+        await storage.del(projectKey(meta.id));
+        changed = true;
+      } else {
+        kept.push(meta);
+      }
+    }
+
+    if (changed) await storage.set(INDEX_KEY, kept);
+    return kept;
   });
 }
 
