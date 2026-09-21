@@ -82,9 +82,14 @@ export function GuitarFocus() {
     setView({ name: 'layer', layerId: id });
   };
 
+  const closeDuplicate = () => {
+    suppressOpen.current = null;
+    setDuplicateTarget(null);
+  };
+
   const duplicateSelectedLayer = (id: string) => {
     commit((s) => duplicateLayer(s, id));
-    setDuplicateTarget(null);
+    closeDuplicate();
   };
 
   return (
@@ -184,7 +189,7 @@ export function GuitarFocus() {
       )}
 
       {duplicateTarget && (
-        <Sheet title="Duplicate this layer?" onClose={() => setDuplicateTarget(null)}>
+        <Sheet title="Duplicate this layer?" onClose={closeDuplicate}>
           <button
             className="btn primary wide"
             onClick={() => duplicateSelectedLayer(duplicateTarget)}
