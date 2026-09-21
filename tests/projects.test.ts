@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cloneSong, duplicateName, nextUntitledName, normalizeProjectName, uniqueProjectName } from '../src/model/projects';
+import {
+  cloneSong,
+  duplicateName,
+  isDefaultProjectName,
+  isPristineSong,
+  nextUntitledName,
+  normalizeProjectName,
+  uniqueProjectName,
+} from '../src/model/projects';
 import { addEvent, buildChord, createLayer, createSeedChord, createSong, findLayer } from '../src/model/song';
 import type { ProjectRecord } from '../src/model/projects';
 import type { Song } from '../src/model/types';
@@ -71,6 +79,16 @@ describe('project naming', () => {
     expect(normalizeProjectName('  Riff  ')).toBe('Riff');
     expect(normalizeProjectName('   ')).toBeNull();
     expect(normalizeProjectName('')).toBeNull();
+  });
+
+  it('recognizes only untouched default projects as disposable candidates', () => {
+    const song = createSong();
+    expect(isPristineSong(song)).toBe(true);
+    expect(isDefaultProjectName('Untitled Project')).toBe(true);
+    expect(isDefaultProjectName('Untitled Project 12')).toBe(true);
+    expect(isDefaultProjectName('My Song')).toBe(false);
+    expect(isPristineSong({ ...song, bpm: 101 })).toBe(false);
+    expect(isPristineSong({ ...song, timelineBars: 2 })).toBe(false);
   });
 
   it('cloneSong shares nothing with the source', () => {
@@ -154,6 +172,35 @@ describe('project lifecycle in the store', () => {
     const stored = await loadProjectIndex();
     expect(stored.map((p) => p.id).sort()).toEqual([a, b].sort());
     expect(stored.every((p) => p.createdAt > 0 && p.updatedAt >= p.createdAt)).toBe(true);
+  });
+
+  it('discards a completely untouched Untitled Project on close', async () => {
+    await hydrateStore();
+    const id = await useStore.getState().createProject();
+    expect(await loadProject(id)).not.toBeNull();
+    await useStore.getState().closeProject();
+    expect(useStore.getState().projects).toEqual([]);
+    expect(await loadProject(id)).toBeNull();
+  });
+
+  it('prunes an abandoned untouched project on the next launch', async () => {
+    await hydrateStore();
+    const id = await useStore.getState().createProject();
+    expect(await loadProject(id)).not.toBeNull();
+    // Simulate killing/reopening the app without using the in-app Back control.
+    await hydrateStore();
+    expect(useStore.getState().projects).toEqual([]);
+    expect(await loadProject(id)).toBeNull();
+  });
+
+  it('keeps an Untitled Project once any real song information changes', async () => {
+    await hydrateStore();
+    const id = await useStore.getState().createProject();
+    useStore.getState().commit((s) => ({ ...s, bpm: 101 }));
+    await settleAutosave();
+    await useStore.getState().closeProject();
+    expect(useStore.getState().projects.map((p) => p.id)).toEqual([id]);
+    expect((await loadProject(id))!.song.bpm).toBe(101);
   });
 
   it('persists projects independently and switching loads the right song', async () => {
@@ -350,6 +397,8 @@ describe('project lifecycle in the store', () => {
     const a = await useStore.getState().createProject();
     const b = await useStore.getState().createProject();
     const c = await useStore.getState().createProject();
+    // Give C real information so closing it keeps the project.
+    useStore.getState().commit((s) => ({ ...s, bpm: 101 }));
     await useStore.getState().closeProject();
     await useStore.getState().deleteProject(b);
     expect(useStore.getState().projects.map((p) => p.id).sort()).toEqual([a, c].sort());
@@ -388,6 +437,9 @@ describe('project lifecycle in the store', () => {
     const a = await useStore.getState().createProject();
     vi.setSystemTime(Date.now() + 1000);
     const b = await useStore.getState().createProject();
+    // Keep B when closing it; untouched default projects are intentionally discarded.
+    useStore.getState().commit((s) => ({ ...s, bpm: 101 }));
+    await settleAutosave();
     await useStore.getState().closeProject();
     expect(useStore.getState().projects.map((p) => p.id)).toEqual([b, a]);
     vi.setSystemTime(Date.now() + 1000);
