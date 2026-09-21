@@ -111,6 +111,23 @@ input[type='range'] {
 .header-side.right {
   justify-content: flex-end;
 }
+.layer-type-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+}
+.layer-type-title > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.layer-type-chevron {
+  color: var(--text-dim);
+  font-size: 12px;
+  flex-shrink: 0;
+}
 
 /* ---- buttons ------------------------------------------------------------ */
 
