@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createLayer, findLayer, pitchClassHistogram } from '../src/model/song';
+import { convertChordLayerType, createLayer, duplicateLayer, findLayer, pitchClassHistogram } from '../src/model/song';
 import { songBars } from '../src/model/time';
 import type { StrumLayer } from '../src/model/types';
 import { useStore } from '../src/state/store';
@@ -120,6 +120,45 @@ describe('undo / redo', () => {
       [0, 2],
       [2, 4],
     ]);
+  });
+});
+
+describe('layer duplication and chord playback type', () => {
+  it('duplicates a chord layer independently and switches strum/picked without losing chords', () => {
+    const layerId = addLayer('strum');
+    const eventId = insertAtCursor(layerId, 57)!;
+    makeChord(layerId, eventId, 'minor');
+
+    useStore.getState().commit((song) => duplicateLayer(song, layerId));
+    let layers = useStore.getState().song.guitar.layers;
+    expect(layers).toHaveLength(2);
+    expect(layers.map((layer) => layer.name)).toEqual(['Strummed Chords 1', 'Strummed Chords 2']);
+
+    const original = layers[0];
+    const duplicate = layers[1];
+    expect(duplicate.id).not.toBe(original.id);
+    expect(duplicate.events).toHaveLength(1);
+    expect(duplicate.events[0].id).not.toBe(original.events[0].id);
+    expect(duplicate.events[0]).toMatchObject({
+      kind: 'chord',
+      start: original.events[0].start,
+      duration: original.events[0].duration,
+      velocity: original.events[0].velocity,
+    });
+    if (duplicate.events[0].kind === 'chord' && original.events[0].kind === 'chord') {
+      expect(duplicate.events[0].quality).toBe('minor');
+      expect(duplicate.events[0].root).toBe(original.events[0].root);
+      expect(duplicate.events[0].strings).toEqual(original.events[0].strings);
+      expect(duplicate.events[0].strings).not.toBe(original.events[0].strings);
+    }
+
+    useStore.getState().commit((song) => convertChordLayerType(song, duplicate.id, 'picked'));
+    layers = useStore.getState().song.guitar.layers;
+    expect(layers[0].type).toBe('strum');
+    expect(layers[1].type).toBe('picked');
+    expect(layers[1].name).toBe('Picked Chords 1');
+    expect(layers[1].events).toHaveLength(1);
+    expect(layers[1].events[0].id).toBe(duplicate.events[0].id);
   });
 });
 
