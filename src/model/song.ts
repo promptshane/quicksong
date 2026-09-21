@@ -61,71 +61,9 @@ function nextLayerName(song: Song, type: GuitarLayerType, excludeLayerId?: strin
   let max = 0;
   for (const layer of song.guitar.layers) {
     if (layer.id === excludeLayerId || layer.type !== type) continue;
-    const match = layer.name.match(new RegExp(`^${label.replace(/[.*+?^\${}()|[\\]\\]/g, '\\export const LAYER_TYPE_LABELS: Record<GuitarLayerType, string> = {
-  strum: 'Strummed Chords',
-  picked: 'Picked Chords',
-  single: 'Single Notes',
-};
-
-export function createLayer(type: GuitarLayerType, song: Song): GuitarLayer {
-  const count = song.guitar.layers.filter((l) => l.type === type).length + 1;
-  const base = {
-    id: newId('layer'),
-    name: `${LAYER_TYPE_LABELS[type]} ${count}`,
-')} (\\d+)import { addToneToVoicing, defaultVoicing, relabelChord, singleNoteVoicing, soundingNotes } from './chords';
-import { newId } from './ids';
-import { pitchClassOf } from './music';
-import { DEFAULT_TIME_SIGNATURE, eighthsPerBar } from './time';
-import type {
-  AnyEvent,
-  ChordEvent,
-  ChordLayer,
-  ChordQuality,
-  GuitarLayer,
-  GuitarLayerType,
-  NoteEvent,
-  PickedLayer,
-  SingleNoteLayer,
-  Song,
-  StrumLayer,
-  StrumSlot,
-  TimeSignature,
-  Voicing,
-} from './types';
-import { DEFAULT_VELOCITY } from './types';
-
-export function createSong(): Song {
-  return {
-    version: 1,
-    id: newId('song'),
-    bpm: 100,
-    timeSignature: DEFAULT_TIME_SIGNATURE,
-    key: { mode: 'auto' },
-    timelineBars: 1,
-    guitar: { layers: [] },
-  };
-}
-
-/** A basic "down on every beat" strum pattern for a time signature. */
-export function defaultStrumPattern(ts: TimeSignature): StrumSlot[] {
-  const slots = eighthsPerBar(ts);
-  const perBeat = ts.beatUnit === 4 ? 2 : 1;
-  return Array.from({ length: slots }, (_, i) => (i % perBeat === 0 ? 'down' : null));
-}
-
-/** Default pick order: bass string then walk up, one pick per beat. */
-export function defaultPickPattern(ts: TimeSignature): number[] {
-  const order = [6, 4, 3, 2, 5, 3, 2, 1];
-  return Array.from({ length: ts.beatsPerBar }, (_, i) => order[i % order.length]);
-}
-
-/** Resize a per-bar pattern when the time signature changes, keeping what fits. */
-export function resizePattern<T>(pattern: T[], length: number, fill: (i: number) => T): T[] {
-  return Array.from({ length }, (_, i) => (i < pattern.length ? pattern[i] : fill(i)));
-}
-
-));
-    max = Math.max(max, match ? Number(match[1]) : 0);
+    const prefix = `${label} `;
+    const suffix = layer.name.startsWith(prefix) ? Number(layer.name.slice(prefix.length)) : NaN;
+    if (Number.isInteger(suffix) && suffix > 0) max = Math.max(max, suffix);
   }
   return `${label} ${max + 1}`;
 }
@@ -145,6 +83,10 @@ export function createLayer(type: GuitarLayerType, song: Song): GuitarLayer {
     case 'picked':
       return { ...base, type, events: [], pickPattern: defaultPickPattern(song.timeSignature) } satisfies PickedLayer;
   }
+}
+
+export function isChordLayer(layer: GuitarLayer): layer is ChordLayer {
+  return layer.type === 'strum' || layer.type === 'picked';
 }
 
 /**
@@ -212,10 +154,6 @@ export function duplicateLayer(song: Song, layerId: string): Song {
   const layers = [...song.guitar.layers];
   layers.splice(index + 1, 0, duplicate);
   return { ...song, guitar: { ...song.guitar, layers } };
-}
-
-export function isChordLayer(layer: GuitarLayer): layer is ChordLayer {
-  return layer.type === 'strum' || layer.type === 'picked';
 }
 
 export function createNoteEvent(midi: number, start: number, duration: number, velocity = DEFAULT_VELOCITY): NoteEvent {
