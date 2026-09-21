@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { LAYER_TYPE_LABELS, createLayer } from '../model/song';
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { LAYER_TYPE_LABELS, createLayer, duplicateLayer } from '../model/song';
 import type { GuitarLayerType } from '../model/types';
 import { useStore } from '../state/store';
 import { Overview } from './Overview';
@@ -18,6 +18,14 @@ export function GuitarFocus() {
   const setView = useStore((s) => s.setView);
   const [picking, setPicking] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [duplicateTarget, setDuplicateTarget] = useState<string | null>(null);
+  const longPress = useRef<{
+    id: string;
+    startX: number;
+    startY: number;
+    timer: ReturnType<typeof setTimeout> | null;
+  } | null>(null);
+  const suppressOpen = useRef<string | null>(null);
 
   const addLayer = (type: GuitarLayerType) => {
     const layer = createLayer(type, song);
@@ -36,6 +44,47 @@ export function GuitarFocus() {
       ...s,
       guitar: { ...s.guitar, layers: s.guitar.layers.map((l) => (l.id === id ? { ...l, muted: !l.muted } : l)) },
     }));
+  };
+
+  const clearLayerHold = () => {
+    if (longPress.current?.timer) clearTimeout(longPress.current.timer);
+    longPress.current = null;
+  };
+
+  const startLayerHold = (e: ReactPointerEvent<HTMLDivElement>, id: string) => {
+    if ((e.target as HTMLElement).closest('[data-layer-control]')) return;
+    clearLayerHold();
+    const hold = {
+      id,
+      startX: e.clientX,
+      startY: e.clientY,
+      timer: null as ReturnType<typeof setTimeout> | null,
+    };
+    hold.timer = setTimeout(() => {
+      if (longPress.current !== hold) return;
+      suppressOpen.current = id;
+      setDuplicateTarget(id);
+    }, 550);
+    longPress.current = hold;
+  };
+
+  const moveLayerHold = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const hold = longPress.current;
+    if (!hold) return;
+    if (Math.hypot(e.clientX - hold.startX, e.clientY - hold.startY) > 8) clearLayerHold();
+  };
+
+  const openLayer = (id: string) => {
+    if (suppressOpen.current === id) {
+      suppressOpen.current = null;
+      return;
+    }
+    setView({ name: 'layer', layerId: id });
+  };
+
+  const duplicateSelectedLayer = (id: string) => {
+    commit((s) => duplicateLayer(s, id));
+    setDuplicateTarget(null);
   };
 
   return (
@@ -64,11 +113,20 @@ export function GuitarFocus() {
         ) : (
           <div className="layer-list">
             {song.guitar.layers.map((layer) => (
-              <div key={layer.id} className="layer-card" data-layer-card={layer.id}>
+              <div
+                key={layer.id}
+                className="layer-card"
+                data-layer-card={layer.id}
+                onPointerDown={(e) => startLayerHold(e, layer.id)}
+                onPointerMove={moveLayerHold}
+                onPointerUp={clearLayerHold}
+                onPointerCancel={clearLayerHold}
+                onContextMenu={(e) => e.preventDefault()}
+              >
                 <div className="layer-card-head">
                   <button
                     className="layer-card-title"
-                    onClick={() => setView({ name: 'layer', layerId: layer.id })}
+                    onClick={() => openLayer(layer.id)}
                     data-testid="open-layer"
                   >
                     <b>{layer.name}</b>
@@ -80,6 +138,7 @@ export function GuitarFocus() {
                   <button
                     className={`btn small ${layer.muted ? 'active' : 'ghost'}`}
                     onClick={() => toggleMute(layer.id)}
+                    data-layer-control
                     aria-label={layer.muted ? 'Unmute layer' : 'Mute layer'}
                   >
                     {layer.muted ? 'Muted' : 'Mute'}
@@ -87,6 +146,7 @@ export function GuitarFocus() {
                   <button
                     className="btn small ghost danger"
                     onClick={() => setConfirmDelete(layer.id)}
+                    data-layer-control
                     aria-label="Delete layer"
                   >
                     ✕
@@ -95,7 +155,7 @@ export function GuitarFocus() {
                 <button
                   className="row-lane"
                   style={{ minHeight: 22 }}
-                  onClick={() => setView({ name: 'layer', layerId: layer.id })}
+                  onClick={() => openLayer(layer.id)}
                   aria-label={`Open ${layer.name}`}
                 >
                   <Overview song={song} layer={layer} />
@@ -120,6 +180,18 @@ export function GuitarFocus() {
               </button>
             ))}
           </div>
+        </Sheet>
+      )}
+
+      {duplicateTarget && (
+        <Sheet title="Duplicate this layer?" onClose={() => setDuplicateTarget(null)}>
+          <button
+            className="btn primary wide"
+            onClick={() => duplicateSelectedLayer(duplicateTarget)}
+            data-testid="duplicate-layer"
+          >
+            Duplicate layer
+          </button>
         </Sheet>
       )}
 
