@@ -1,4 +1,7 @@
-import { useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { transport, useTransport } from '../audio/transport';
+import { lastEventEnd, songBeats } from '../model/time';
+import { loadProject } from '../state/persistence';
 import { useStore } from '../state/store';
 import { Sheet } from './Sheet';
 import { toast } from './toastStore';
@@ -16,8 +19,12 @@ export function ProjectsScreen() {
   const renameProject = useStore((s) => s.renameProject);
   const duplicateProject = useStore((s) => s.duplicateProject);
   const deleteProject = useStore((s) => s.deleteProject);
+  const transportPlaying = useTransport((s) => s.playing);
+  const playheadBeat = useTransport((s) => s.playheadBeat);
 
   const [action, setAction] = useState<Action>(null);
+  const [preview, setPreview] = useState<{ id: string; endBeat: number } | null>(null);
+  const previewRequest = useRef(0);
   const [draftName, setDraftName] = useState('');
   const hold = useRef<{ id: string; startX: number; startY: number; timer: ReturnType<typeof setTimeout> | null } | null>(null);
   const suppressOpen = useRef<string | null>(null);
@@ -29,7 +36,7 @@ export function ProjectsScreen() {
     hold.current = null;
   };
 
-  const startHold = (e: ReactPointerEvent<HTMLButtonElement>, id: string) => {
+  const startHold = (e: ReactPointerEvent<HTMLElement>, id: string) => {
     clearHold();
     const h = { id, startX: e.clientX, startY: e.clientY, timer: null as ReturnType<typeof setTimeout> | null };
     h.timer = setTimeout(() => {
@@ -41,7 +48,7 @@ export function ProjectsScreen() {
     hold.current = h;
   };
 
-  const moveHold = (e: ReactPointerEvent<HTMLButtonElement>) => {
+  const moveHold = (e: ReactPointerEvent<HTMLElement>) => {
     const h = hold.current;
     if (h && Math.hypot(e.clientX - h.startX, e.clientY - h.startY) > 8) clearHold();
   };
@@ -86,10 +93,61 @@ export function ProjectsScreen() {
     close();
   };
 
+  const stopPreview = () => {
+    previewRequest.current++;
+    transport.stop(0);
+    setPreview(null);
+  };
+
+  const togglePreview = async (id: string) => {
+    if (preview?.id === id && transport.isPlaying) {
+      stopPreview();
+      return;
+    }
+
+    const request = ++previewRequest.current;
+    transport.stop(0);
+    setPreview(null);
+
+    const record = await loadProject(id);
+    if (request !== previewRequest.current) return;
+    if (!record) {
+      toast('That project no longer exists');
+      return;
+    }
+    if (lastEventEnd(record.song) <= 0) {
+      toast('Nothing to play yet');
+      return;
+    }
+
+    const endBeat = songBeats(record.song);
+    setPreview({ id, endBeat });
+    await transport.play(record.song, 0, { endBeat, loop: true });
+    if (request !== previewRequest.current) {
+      transport.stop(0);
+      return;
+    }
+    if (!transport.isPlaying) setPreview(null);
+  };
+
   const remove = (id: string) => {
+    if (preview?.id === id) stopPreview();
     void deleteProject(id);
     close();
   };
+
+  useEffect(
+    () => () => {
+      previewRequest.current++;
+      transport.stop(0);
+    },
+    [],
+  );
+
+  const previewRemaining =
+    preview && transportPlaying && preview.endBeat > 0
+      ? Math.max(0, Math.min(1, 1 - playheadBeat / preview.endBeat))
+      : 1;
 
   return (
     <div className="screen" data-screen="projects">
@@ -110,21 +168,57 @@ export function ProjectsScreen() {
             </div>
           ) : (
             <div className="project-list">
-              {projects.map((p) => (
-                <button
-                  key={p.id}
-                  className="project-card"
-                  data-project-card={p.id}
-                  onClick={() => open(p.id)}
-                  onPointerDown={(e) => startHold(e, p.id)}
-                  onPointerMove={moveHold}
-                  onPointerUp={clearHold}
-                  onPointerCancel={clearHold}
-                  onContextMenu={(e) => e.preventDefault()}
-                >
-                  {p.name}
-                </button>
-              ))}
+              {projects.map((p) => {
+                const isPreviewing = preview?.id === p.id && transportPlaying;
+                const remaining = isPreviewing ? previewRemaining : 1;
+                return (
+                  <div
+                    key={p.id}
+                    className="project-card"
+                    data-project-card={p.id}
+                    onPointerDown={(e) => startHold(e, p.id)}
+                    onPointerMove={moveHold}
+                    onPointerUp={clearHold}
+                    onPointerCancel={clearHold}
+                    onContextMenu={(e) => e.preventDefault()}
+                  >
+                    <button className="project-open" onClick={() => open(p.id)} aria-label={`Open ${p.name}`}>
+                      <span>{p.name}</span>
+                    </button>
+                    <button
+                      className={`project-preview ${isPreviewing ? 'playing' : ''}`}
+                      aria-label={isPreviewing ? `Stop ${p.name}` : `Play ${p.name}`}
+                      data-testid="project-preview"
+                      data-project-preview={p.id}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onPointerUp={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void togglePreview(p.id);
+                      }}
+                    >
+                      <svg className="project-preview-ring" viewBox="0 0 48 48" aria-hidden="true">
+                        <circle className="project-preview-track" cx="24" cy="24" r="20" />
+                        <circle
+                          className="project-preview-progress"
+                          cx="24"
+                          cy="24"
+                          r="20"
+                          pathLength="100"
+                          strokeDasharray={`${remaining * 100} 100`}
+                        />
+                      </svg>
+                      {isPreviewing ? (
+                        <span className="project-preview-stop" aria-hidden="true" />
+                      ) : (
+                        <svg className="project-preview-play" viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M8 6.2v11.6a1 1 0 0 0 1.54.84l8.7-5.8a1 1 0 0 0 0-1.68l-8.7-5.8A1 1 0 0 0 8 6.2Z" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
