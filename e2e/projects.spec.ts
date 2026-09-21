@@ -120,25 +120,38 @@ test('Projects and Song Home paint their bottom bars to the viewport edge', asyn
   expect(standaloneAppRule).toBe('100vh');
 });
 
-test('new project opens Song Home; ‹ Projects returns and the project is listed', async ({ page }) => {
+test('empty new projects are discarded; projects with information persist', async ({ page }) => {
   await page.getByTestId('new-project').click();
   await expect(page.locator('[data-screen="home"]')).toBeVisible();
   await expect(page.getByTestId('project-title')).toHaveText('Untitled Project');
+
+  // Backing out without changing anything leaves no junk project behind.
   await page.getByRole('button', { name: 'Back to projects' }).click();
   await expect(page.locator('[data-screen="projects"]')).toBeVisible();
+  await expect(cards(page)).toHaveCount(0);
+
+  // Any real song information makes the project persistent.
+  await page.getByTestId('new-project').click();
+  await page.getByRole('button', { name: 'BPM' }).click();
+  await page.getByRole('button', { name: 'Faster' }).click();
+  await page.getByRole('button', { name: 'Done' }).click();
+  await page.getByRole('button', { name: 'Back to projects' }).click();
   await expect(cards(page)).toHaveText(['Untitled Project']);
 
   await page.getByTestId('new-project').click();
+  await page.getByRole('button', { name: 'BPM' }).click();
+  await page.getByRole('button', { name: 'Faster' }).click();
+  await page.getByRole('button', { name: 'Done' }).click();
   await expect(page.getByTestId('project-title')).toHaveText('Untitled Project 2');
   await page.getByRole('button', { name: 'Back to projects' }).click();
   await expect(cards(page)).toHaveCount(2);
 
-  // Tapping a card opens that project.
-  await cards(page).filter({ hasText: /^Untitled Project$/ }).click();
+  // Tapping the project name/card still opens it.
+  await cards(page).filter({ hasText: /^Untitled Project$/ }).locator('.project-open').click();
   await expect(page.locator('[data-screen="home"]')).toBeVisible();
   await expect(page.getByTestId('project-title')).toHaveText('Untitled Project');
 
-  // Launch still lands on Projects.
+  // Launch still lands on Projects and keeps only meaningful projects.
   await reloadToProjects(page);
   await expect(cards(page)).toHaveCount(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
@@ -196,8 +209,39 @@ test('projects keep independent songs and undo survives autosave', async ({ page
   await expect(page.locator('[data-instrument="guitar"] .overview .clip')).toHaveCount(1);
 });
 
+test('project play control previews and loops without opening the project', async ({ page }) => {
+  await page.getByTestId('new-project').click();
+  await page.getByRole('button', { name: 'Guitar' }).click();
+  await page.getByTestId('add-layer').click();
+  await page.locator('[data-layer-type="single"]').click();
+  await page.getByTestId('record').click();
+  await page.locator('.key[data-midi="48"]').dispatchEvent('pointerdown');
+  await page.getByRole('button', { name: 'Back to guitar' }).click();
+  await page.getByRole('button', { name: 'Back to song' }).click();
+  await page.getByRole('button', { name: 'Back to projects' }).click();
+
+  const card = cards(page).first();
+  const previewButton = card.getByTestId('project-preview');
+  await expect(previewButton).toHaveAttribute('aria-label', /Play/);
+  await previewButton.click();
+
+  await expect(page.locator('[data-screen="projects"]')).toBeVisible();
+  await expect(previewButton).toHaveAttribute('aria-label', /Stop/);
+  const firstDash = await previewButton.locator('.project-preview-progress').getAttribute('stroke-dasharray');
+  await page.waitForTimeout(350);
+  const secondDash = await previewButton.locator('.project-preview-progress').getAttribute('stroke-dasharray');
+  expect(secondDash).not.toBe(firstDash);
+
+  await previewButton.click();
+  await expect(previewButton).toHaveAttribute('aria-label', /Play/);
+  await expect(page.locator('[data-screen="home"]')).toHaveCount(0);
+});
+
 test('long-press offers Rename / Duplicate / Delete without opening the project', async ({ page }) => {
   await page.getByTestId('new-project').click();
+  await page.getByRole('button', { name: 'BPM' }).click();
+  await page.getByRole('button', { name: 'Faster' }).click();
+  await page.getByRole('button', { name: 'Done' }).click();
   await page.getByRole('button', { name: 'Back to projects' }).click();
   const card = cards(page).first();
 
