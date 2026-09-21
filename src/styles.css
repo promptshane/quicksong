@@ -72,6 +72,19 @@ input[type='range'] {
   overflow: hidden;
 }
 
+/*
+ * iOS standalone PWAs can report 100dvh as the safe layout viewport rather
+ * than the full physical screen. With viewport-fit=cover that leaves the
+ * bottom home-indicator inset outside .app as an unused strip. Extend the
+ * app by exactly that inset in standalone mode; the bottom controls already
+ * account for --safe-bottom, so they remain clear of the home indicator.
+ */
+@media (display-mode: standalone) and (-webkit-touch-callout: none) {
+  .app {
+    height: calc(100dvh + var(--safe-bottom));
+  }
+}
+
 .screen {
   flex: 1;
   min-height: 0;
