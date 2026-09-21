@@ -89,7 +89,7 @@ test('Projects and Song Home paint their bottom bars to the viewport edge', asyn
     }
     return null;
   });
-  expect(standaloneAppHeight).toBe('100vh');
+  expect(standaloneAppHeight).toBe('calc(100vh + var(--safe-top))');
 });
 
 test('new project opens Song Home; ‹ Projects returns and the project is listed', async ({ page }) => {
