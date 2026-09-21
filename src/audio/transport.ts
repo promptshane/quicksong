@@ -45,7 +45,7 @@ class Transport {
 
   currentBeat(): number {
     if (!this.isPlaying) return useTransport.getState().playheadBeat;
-    const elapsedBeats = ((getAudioEngine().now() - this.startTime) * this.bpm) / 60;
+    const elapsedBeats = Math.max(0, ((getAudioEngine().now() - this.startTime) * this.bpm) / 60);
     if (this.loop && this.loopLength > 0) {
       const wrapped = ((elapsedBeats % this.loopLength) + this.loopLength) % this.loopLength;
       return this.startBeat + wrapped;
