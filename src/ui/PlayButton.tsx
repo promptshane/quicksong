@@ -16,15 +16,10 @@ export function PlayButton({ small = false }: { small?: boolean }) {
     }
 
     const endBeat = songBeats(song);
-
-    const playLoop = () => {
-      void transport.play(song, 0, {
-        endBeat,
-        onEnd: playLoop,
-      });
-    };
-
-    playLoop();
+    void transport.play(song, 0, {
+      endBeat,
+      loop: true,
+    });
   };
 
   return (
