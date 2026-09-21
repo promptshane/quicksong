@@ -266,6 +266,42 @@ test('strummed chord layer: seed note → minor chord, strings, strum grid, play
   await expect(page.locator('.playhead')).toHaveCount(0);
 });
 
+test('duplicate a chord layer and switch the copy from strummed to picked', async ({ page }) => {
+  await openGuitar(page);
+  await addLayer(page, 'strum');
+  await recordOn(page);
+  await tapKey(page, 57);
+  await page.getByTestId('make-minor').click();
+  await expect(page.locator('.block.chord').first()).toContainText('Am');
+
+  await page.getByRole('button', { name: 'Back to guitar' }).click();
+  const cards = page.locator('.layer-card');
+  await expect(cards).toHaveCount(1);
+
+  await longPress(page, cards.first().getByTestId('open-layer'));
+  await expect(page.locator('.sheet[aria-label="Duplicate this layer?"]')).toBeVisible();
+  await page.getByTestId('duplicate-layer').click();
+
+  await expect(cards).toHaveCount(2);
+  await expect(cards.nth(0).getByTestId('open-layer')).toContainText('Strummed Chords 1');
+  await expect(cards.nth(1).getByTestId('open-layer')).toContainText('Strummed Chords 2');
+
+  await cards.nth(1).getByTestId('open-layer').click();
+  await expect(page.locator('[data-screen="layer"][data-layer-type="strum"]')).toBeVisible();
+  await expect(page.locator('.block.chord')).toHaveCount(1);
+  await expect(page.locator('.block.chord').first()).toContainText('Am');
+
+  await page.getByTestId('change-layer-type').click();
+  await expect(page.locator('.sheet[aria-label="Layer type"]')).toBeVisible();
+  await page.locator('[data-layer-type-choice="picked"]').click();
+
+  await expect(page.locator('[data-screen="layer"][data-layer-type="picked"]')).toBeVisible();
+  await expect(page.getByTestId('change-layer-type')).toContainText('Picked Chords 1');
+  await expect(page.locator('.block.chord')).toHaveCount(1);
+  await expect(page.locator('.block.chord').first()).toContainText('Am');
+  await expect(page.getByTestId('pick-grid')).toBeVisible();
+});
+
 test('picked chord layer: pattern edits and per-chord override', async ({ page }) => {
   await openGuitar(page);
   await addLayer(page, 'picked');
