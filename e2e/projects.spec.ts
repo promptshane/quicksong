@@ -63,11 +63,26 @@ test('launches to an empty Projects screen at iPhone width', async ({ page }) =>
 
 test('Projects and Song Home paint their bottom bars to the viewport edge', async ({ page }) => {
   await expect(page.locator('[data-screen="projects"]')).toBeVisible();
+  await page.evaluate(() => document.documentElement.style.setProperty('--safe-bottom', '34px'));
   await expectAppAndBottomBarToReachViewportBottom(page);
+  const projectsBarHeight = (await page.locator('.bottombar').boundingBox())!.height;
 
   await page.getByTestId('new-project').click();
   await expect(page.locator('[data-screen="home"]')).toBeVisible();
   await expectAppAndBottomBarToReachViewportBottom(page);
+
+  const homeLayout = await page.evaluate(() => {
+    const bar = document.querySelector<HTMLElement>('.bottombar')!.getBoundingClientRect();
+    const play = document.querySelector<HTMLElement>('.play-btn')!.getBoundingClientRect();
+    const safeBottom = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom'));
+    return {
+      barHeight: bar.height,
+      playCenter: play.top + play.height / 2,
+      safeControlCenter: bar.top + (bar.height - safeBottom) / 2,
+    };
+  });
+  expect(Math.abs(homeLayout.barHeight - projectsBarHeight)).toBeLessThanOrEqual(1);
+  expect(Math.abs(homeLayout.playCenter - homeLayout.safeControlCenter)).toBeLessThanOrEqual(1);
 
   await page.setViewportSize({ width: 844, height: 390 });
   await expectAppAndBottomBarToReachViewportBottom(page);
