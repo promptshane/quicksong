@@ -150,3 +150,9 @@ export function rangeLabel(start: number, end: number, ts: TimeSignature): strin
   }
   return `${positionLabel(start, ts)}–${positionLabel(end, ts)}`;
 }
+
+/** "bar 2" on a bar line, otherwise a position like "2.3&". */
+export function pointLabel(beat: number, ts: TimeSignature): string {
+  const bars = beat / ts.beatsPerBar;
+  return Math.abs(bars - Math.round(bars)) < 1e-6 ? `bar ${Math.round(bars) + 1}` : positionLabel(beat, ts);
+}

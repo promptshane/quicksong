@@ -1,5 +1,6 @@
 import { getAudioEngine } from '../audio/engine';
 import { renderChordPreview, renderPianoPreview } from '../audio/render';
+import { transport } from '../audio/transport';
 import { relabelChord, setStringMuted, shiftStringFret, voicingsFor } from '../model/chords';
 import { clampMidi } from '../model/music';
 import { createPianoChord, setPianoChord, togglePianoNote } from '../model/piano';
@@ -13,13 +14,15 @@ import {
   findLayer,
   findPianoLayer,
   isChordLayer,
+  isLoopOn,
   removeEvent,
+  setLoopOn,
   setLoopRegion,
   updateEvent,
   updateLayer,
   updatePianoLayer,
 } from '../model/song';
-import { beatsToSeconds, eighthBeats, snapToEighth, songBars, songBeats } from '../model/time';
+import { beatsToSeconds, eighthBeats, loopRange, snapToEighth, songBars, songBeats } from '../model/time';
 import type { AnyEvent, ChordEvent, ChordQuality, NoteEvent, PianoEvent, PitchClass, Song } from '../model/types';
 import { useStore } from './store';
 
@@ -226,6 +229,22 @@ export function resizeEvent(layerId: string, eventId: string, start: number, dur
     (so) => updateEvent(so, layerId, eventId, (e) => (e.start === s && e.duration === d ? e : { ...e, start: s, duration: d })),
     coalesceKey,
   );
+}
+
+/**
+ * Play the open song. With the loop on, playback starts at the loop region's
+ * start and keeps looping it; with the loop off, it starts at the cursor and
+ * plays through to the end once.
+ */
+export function playSong(): void {
+  const { song, cursorBeat } = useStore.getState();
+  const from = isLoopOn(song) ? loopRange(song).start : cursorBeat;
+  void transport.play(song, from, { songLoop: true });
+}
+
+/** Switch looping on or off (hold the golden loop bar). */
+export function setSongLoopOn(on: boolean): void {
+  useStore.getState().commit((s) => setLoopOn(s, on));
 }
 
 /** Set the song's loop region (beats); covering the whole song clears it. */

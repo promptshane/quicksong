@@ -4,7 +4,7 @@ engine.initAudioEngine(() => ({ noteOn() {}, allNotesOff() {} }));
 import { describeChange } from '../src/model/labels';
 import { createPianoLayer } from '../src/model/piano';
 import { isPristineSong } from '../src/model/projects';
-import { appendLayer, createSong, findPianoLayer, setLoopRegion } from '../src/model/song';
+import { appendLayer, createSong, findPianoLayer, isLoopOn, setLoopOn, setLoopRegion } from '../src/model/song';
 import { loopRange, rangeLabel } from '../src/model/time';
 import type { Song } from '../src/model/types';
 import { addPianoChord, resizeEvent, setSongLoop } from '../src/state/actions';
@@ -76,5 +76,19 @@ describe('editing the loop and event edges', () => {
     expect(event()).toMatchObject({ start: 0, duration: 0.5 });
     useStore.getState().undo();
     expect(event()).toMatchObject({ start: 1, duration: 3 });
+  });
+});
+
+describe('loop on / off in the song', () => {
+  it('is on by default, saved when off, and described for Undo', () => {
+    const song = fourBars();
+    expect(isLoopOn(song)).toBe(true);
+    const off = setLoopOn(song, false);
+    expect(off.loopOff).toBe(true);
+    expect(isLoopOn(off)).toBe(false);
+    expect(setLoopOn(off, true)).not.toHaveProperty('loopOff');
+    expect(describeChange(song, off)).toBe('Loop off');
+    expect(describeChange(off, song)).toBe('Loop on');
+    expect(isPristineSong(setLoopOn(createSong(), false))).toBe(false);
   });
 });

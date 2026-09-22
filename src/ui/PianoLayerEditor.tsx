@@ -12,6 +12,7 @@ import {
   auditionPianoChord,
   changePianoChord,
   cursorAfterEvent,
+  playSong,
   setEventDuration,
   setEventVelocity,
   togglePianoChordNote,
@@ -275,8 +276,7 @@ export function PianoLayerEditor({ layerId }: { layerId: string }) {
 
   const togglePlay = () => {
     if (transport.isPlaying) transport.stop(cursor);
-    // Play from the cursor through the loop region, then keep looping it.
-    else void transport.play(song, cursor, { loop: true });
+    else playSong();
   };
 
   return (

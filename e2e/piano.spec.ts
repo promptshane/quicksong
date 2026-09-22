@@ -421,3 +421,55 @@ test('pinch (ctrl + wheel on desktop) zooms the timeline', async ({ page }) => {
   await dragBy(page, 'loop-end', -pxPerBeat);
   await expect(page.getByTestId('loop-badge')).toHaveText('⟲ 3 beats');
 });
+
+test('Play starts at the loop; hold the loop bar to switch looping off and play from the cursor', async ({ page }) => {
+  await page.getByRole('button', { name: 'BPM' }).click();
+  await page.getByRole('slider', { name: 'BPM slider' }).fill('220');
+  await page.getByRole('button', { name: 'Done' }).click();
+  await openNewPianoLayer(page);
+  await addChord(page, 'C');
+  await page.getByTestId('next-piano-chord').click();
+  await addChord(page, 'G');
+  await page.locator('.timeline-inner').click({ position: { x: 60, y: 110 } }); // deselect; cursor in bar 1
+  const playheadX = () => page.locator('.timeline .playhead').evaluate((el) => parseFloat((el as HTMLElement).style.left));
+
+  // Loop = bar 2 only.
+  await page.getByTestId('loop-bar').click({ position: { x: 30, y: 7 } });
+  await dragBy(page, 'loop-start', 224);
+  await expect(page.getByTestId('loop-badge')).toHaveText('⟲ 1 bar');
+  await page.locator('.timeline-inner').click({ position: { x: 60, y: 110 } }); // cursor back in bar 1
+
+  // Loop on: Play starts at the loop (bar 2), not at the cursor.
+  await page.getByTestId('play').click();
+  await expect.poll(playheadX).toBeGreaterThanOrEqual(224);
+  expect(await playheadX()).toBeLessThan(448);
+  await page.getByTestId('play').click();
+
+  // Hold: looping off — gray, and the badge says where Play starts.
+  const bar = page.getByTestId('loop-bar');
+  const box = (await bar.boundingBox())!;
+  const point = { pointerId: 9, pointerType: 'touch', clientX: box.x + 20, clientY: box.y + box.height / 2 };
+  await bar.dispatchEvent('pointerdown', point);
+  await page.waitForTimeout(650);
+  await bar.dispatchEvent('pointerup', point);
+  await expect(bar).toHaveClass(/off/);
+  await expect(bar).toHaveAttribute('aria-pressed', 'false'); // a hold is not a tap
+  await expect(page.locator('.toast')).toHaveText('Loop off · Play starts at the cursor');
+  await expect(page.getByTestId('loop-badge')).toHaveText('Loop off · Play starts at the cursor');
+  await expect(page.locator('.loop-shade')).toHaveCount(0);
+
+  // Loop off: Play starts at the cursor (bar 1), runs to the end once and stops.
+  await page.getByTestId('play').click();
+  await expect.poll(playheadX).toBeGreaterThan(0);
+  expect(await playheadX()).toBeLessThan(224);
+  await expect(page.getByTestId('play')).toHaveAttribute('aria-label', 'Play', { timeout: 4000 });
+
+  // Hold again: back on.
+  await bar.dispatchEvent('pointerdown', point);
+  await page.waitForTimeout(650);
+  await bar.dispatchEvent('pointerup', point);
+  await expect(bar).not.toHaveClass(/off/);
+  await expect(page.locator('.toast')).toHaveText('Loop on · Play starts at bar 2');
+  await page.getByTestId('undo').click();
+  await expect(bar).toHaveClass(/off/);
+});

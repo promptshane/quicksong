@@ -30,6 +30,7 @@ export function describeChange(before: Song, after: Song): string {
     return `Time signature ${timeSignatureLabel(before.timeSignature)} → ${timeSignatureLabel(after.timeSignature)}`;
   }
   if (!sameJson(before.key, after.key)) return `Key → ${keyLabel(after.key, null)}`;
+  if (before.loopOff !== after.loopOff) return after.loopOff ? 'Loop off' : 'Loop on';
   if (!sameJson(before.loopRegion, after.loopRegion)) {
     const loop = loopRange(after);
     if (loop.whole) return 'Loop · whole song';

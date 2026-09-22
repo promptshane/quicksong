@@ -1700,6 +1700,7 @@ input[type='range'] {
 .loop-bar {
   position: absolute;
   top: 21px;
+  -webkit-touch-callout: none;
   height: 14px;
   border-radius: 5px;
   background: #eab308;
@@ -1715,6 +1716,11 @@ input[type='range'] {
 }
 .loop-bar.whole {
   opacity: 0.65;
+}
+/* Looping switched off (hold the bar): gray, Play starts at the cursor. */
+.loop-bar.off {
+  background: var(--text-faint);
+  opacity: 0.8;
 }
 .loop-bar.selected {
   opacity: 1;

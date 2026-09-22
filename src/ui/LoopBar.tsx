@@ -1,7 +1,9 @@
 import { useRef } from 'react';
-import { loopRange, songBeats } from '../model/time';
+import { isLoopOn } from '../model/song';
+import { loopRange, pointLabel, songBeats } from '../model/time';
 import type { Song } from '../model/types';
-import { setSongLoop } from '../state/actions';
+import { setSongLoop, setSongLoopOn } from '../state/actions';
+import { toast } from './toastStore';
 import { useHorizontalDrag } from './useHorizontalDrag';
 
 interface LoopBarProps {
@@ -17,13 +19,16 @@ const BEAT_SNAP_PX = 100;
 let gestures = 0;
 
 /**
- * The golden loop region in the ruler — what Play keeps looping. It covers the
- * whole song until changed. Tap it to select it; then drag its ends to resize
- * it or its middle to move it. Unselected, a swipe over it scrolls.
+ * The golden loop region in the ruler — what Play keeps looping, starting at
+ * its left edge. It covers the whole song until changed. Tap it to select it;
+ * then drag its ends to resize it or its middle to move it. Hold it to switch
+ * looping off (it turns gray; Play then starts at the cursor) or back on.
+ * Unselected, a swipe over it scrolls.
  */
 export function LoopBar({ song, pxPerBeat, selected, onSelect }: LoopBarProps) {
   const range = loopRange(song);
   const total = songBeats(song);
+  const on = isLoopOn(song);
   const unit = pxPerBeat >= BEAT_SNAP_PX ? 1 : song.timeSignature.beatsPerBar;
   const snap = (beat: number) => Math.round(beat / unit) * unit;
   const origin = useRef({ start: range.start, end: range.end, key: '' });
@@ -43,6 +48,10 @@ export function LoopBar({ song, pxPerBeat, selected, onSelect }: LoopBarProps) {
       },
       onEnd: (moved) => {
         if (!moved) onSelect(!selected);
+      },
+      onLongPress: () => {
+        setSongLoopOn(!on);
+        toast(on ? 'Loop off · Play starts at the cursor' : `Loop on · Play starts at ${pointLabel(range.start, song.timeSignature)}`);
       },
     },
     selected,
@@ -67,11 +76,11 @@ export function LoopBar({ song, pxPerBeat, selected, onSelect }: LoopBarProps) {
   return (
     <>
       <div
-        className={`loop-bar ${selected ? 'selected' : ''} ${range.whole ? 'whole' : ''}`}
+        className={`loop-bar ${selected ? 'selected' : ''} ${range.whole ? 'whole' : ''} ${on ? '' : 'off'}`}
         style={{ left, width }}
         {...body}
         role="button"
-        aria-label={selected ? 'Loop region (drag to move)' : 'Loop region'}
+        aria-label={`Loop region${on ? '' : ' (off)'}${selected ? ', drag to move' : ''}`}
         aria-pressed={selected}
         data-testid="loop-bar"
       />

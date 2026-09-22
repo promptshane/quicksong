@@ -7,7 +7,7 @@ import {
 } from 'react';
 import { useTransport } from '../audio/transport';
 import { eventLabel } from '../model/labels';
-import { eventRootPitchClass } from '../model/song';
+import { eventRootPitchClass, isLoopOn } from '../model/song';
 import { eighthBeats, evenPhraseBars, loopRange, snapToEighth, songBars, songBeats } from '../model/time';
 import type { AnyEvent, AnyLayer, MusicalKey, PianoEvent, Song } from '../model/types';
 import { addTimelineSlot, deleteEvent, moveEvent } from '../state/actions';
@@ -42,6 +42,7 @@ function PianoStrike({ event }: { event: PianoEvent }) {
 
 /** Loop length for the ruler badge: "⟲ 4 bars", with a hint when it is not an even phrase. */
 function loopBadgeText(song: Song): { text: string; even: boolean } {
+  if (!isLoopOn(song)) return { text: 'Loop off · Play starts at the cursor', even: false };
   const range = loopRange(song);
   const perBar = song.timeSignature.beatsPerBar;
   const beats = range.end - range.start;
@@ -249,8 +250,8 @@ export function Timeline({ song, layer, colorKey = null }: TimelineProps) {
           </div>
           {gridLines}
           <div className="lane" style={{ width: contentWidth, right: 'auto' }}>
-            {/* Outside a custom loop region the lane is shaded. */}
-            {!loop.whole && (
+            {/* Outside a custom loop region the lane is shaded (only while looping). */}
+            {!loop.whole && isLoopOn(song) && (
               <>
                 <div className="loop-shade" style={{ left: 0, width: loop.start * pxPerBeat }} />
                 <div className="loop-shade" style={{ left: loop.end * pxPerBeat, right: 0 }} />

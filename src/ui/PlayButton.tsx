@@ -1,21 +1,17 @@
 import { transport, useTransport } from '../audio/transport';
+import { playSong } from '../state/actions';
 import { useStore } from '../state/store';
 
-/** Play/pause the whole song from the beginning, looping at the content end. */
+/**
+ * Song Home's Play / Pause. Same rule as the editors: loop on = start at the
+ * loop region and keep looping it; loop off = play once from the cursor.
+ */
 export function PlayButton({ small = false }: { small?: boolean }) {
   const playing = useTransport((s) => s.playing);
 
   const toggle = () => {
-    const { song } = useStore.getState();
-
-    if (transport.isPlaying) {
-      // Homepage playback always returns to the start when stopped.
-      transport.stop(0);
-      return;
-    }
-
-    // No explicit end: the loop follows slots added or removed while playing.
-    void transport.play(song, 0, { loop: true });
+    if (transport.isPlaying) transport.stop(useStore.getState().cursorBeat);
+    else playSong();
   };
 
   return (

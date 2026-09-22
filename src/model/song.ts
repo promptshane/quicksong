@@ -401,6 +401,16 @@ export function setLoopRegion(song: Song, start: number, end: number): Song {
   return { ...rest, loopRegion: { start: s, end: e } };
 }
 
+/** Whether Play loops the loop region (on unless the user switched it off). */
+export function isLoopOn(song: Song): boolean {
+  return song.loopOff !== true;
+}
+
+export function setLoopOn(song: Song, on: boolean): Song {
+  const { loopOff: _old, ...rest } = song;
+  return on ? rest : { ...rest, loopOff: true };
+}
+
 // ---- key setting ----------------------------------------------------------
 
 export function setManualKey(song: Song, key: MusicalKey): Song {

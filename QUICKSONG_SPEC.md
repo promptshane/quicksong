@@ -328,9 +328,11 @@ Persistent layer-editing actions should include:
 Playback loops the song's **loop region**, shown as a **golden bar** in the timeline ruler (as in GarageBand). By default it covers the whole song and follows slots being added or removed.
 
 - Tap the golden bar to select it; drag its ends to shrink/extend it, or its middle to move it. Edges snap to bars, or to beats when zoomed in far enough. **Whole song** resets it. Tap elsewhere to deselect. Unselected, a swipe over it scrolls like the rest of the timeline.
-- Outside a custom region the lane is dimmed, and Song Home / the layer pages show the region as a gold line along the top of each strip.
+- While looping is on, the lane outside a custom region is dimmed, and Song Home / the layer pages show the region as a gold line along the top of each strip.
 - The loop region is saved with the song; changing it is undoable (one drag = one step).
-- Playing from a layer editor starts at the cursor (or at the region's start if the cursor is outside it), plays to the region's end, then keeps looping the region until paused. Song Home's Play loops the region too. Edits, Undo and Redo made while it plays are heard on the next pass without restarting, and the loop follows region changes live.
+- **Loop on (default):** Play — in a layer editor or on Song Home — always starts at the **start of the loop region** and keeps looping it until paused.
+- **Hold the golden bar** to switch looping **off**: it turns gray, the ruler reads *Loop off · Play starts at the cursor*, and Play then starts **at the cursor line**, plays through to the end of the song once, and stops. Hold it again to switch looping back on (a toast confirms either way; a hold is never taken as a tap). The on/off state is saved with the song and undoable.
+- Edits, Undo and Redo made while playing are heard on the next pass without restarting; moving the region or switching looping on/off also applies live.
 
 The ruler shows the loop's length (e.g. **⟲ 4 bars**). Because the timeline is built from whole bars, a whole-bar loop always lands back on a downbeat in any time signature — no padding is needed. What makes a loop feel even is its phrase length: 1, 2, 4, 8, 16… bars are highlighted; for the whole-song loop, any other length says how many slots would make it even (e.g. *⟲ 3 bars · +1 for an even 4*). Irregular lengths remain fully allowed; nothing is added automatically.
 

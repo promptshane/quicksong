@@ -179,6 +179,11 @@ export interface Song {
    * then follows slots being added or removed.
    */
   loopRegion?: { start: number; end: number };
+  /**
+   * True when the user switched looping off (hold the golden bar): Play then
+   * starts at the cursor and plays through once. Absent = looping on.
+   */
+  loopOff?: true;
   guitar: {
     layers: GuitarLayer[];
   };

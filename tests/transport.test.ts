@@ -91,7 +91,7 @@ describe('transport', () => {
 
   it('the loop follows a slot added while playing', async () => {
     const { song: s } = song();
-    await transport.play(s, 0, { loop: true });
+    await transport.play(s, 0, { songLoop: true });
     runUntil(0.5);
     transport.refresh({ ...s, timelineBars: 2 }); // 8 beats now
     runUntil(4.5);
@@ -121,7 +121,7 @@ describe('transport and the loop region', () => {
     let { song: s, layerId } = song();
     s = addEvent({ ...s, timelineBars: 2 }, layerId, { ...createPianoChord(2, 'minor', 4, 1), id: 'dm' }); // F4 = 65 at beat 4
     s = { ...s, loopRegion: { start: 4, end: 8 } }; // bar 2 only
-    await transport.play(s, 0, { loop: true });
+    await transport.play(s, 0, { songLoop: true });
     runUntil(4.5);
     expect(hitsOf(65)).toEqual([0.05, 2.05, 4.05]); // bar 2, every 2 s
     expect(hitsOf(60)).toEqual([]); // bar 1 never plays
@@ -130,9 +130,43 @@ describe('transport and the loop region', () => {
   it('follows the region being changed while playing', async () => {
     const { song: s } = song();
     const looped = { ...s, timelineBars: 2 };
-    await transport.play(looped, 0, { loop: true });
+    await transport.play(looped, 0, { songLoop: true });
     runUntil(0.5);
     transport.refresh({ ...looped, loopRegion: { start: 0, end: 4 } }); // now just bar 1
+    runUntil(4.5);
+    expect(hitsOf(60)).toEqual([0.05, 2.05, 4.05]);
+  });
+});
+
+describe('loop on / off', () => {
+  it('loop off: plays once from where it started to the song end, then stops there', async () => {
+    const { song: s } = song();
+    await transport.play({ ...s, timelineBars: 2, loopOff: true, loopRegion: { start: 0, end: 4 } }, 2, { songLoop: true });
+    runUntil(5);
+    expect(hitsOf(55)).toEqual([0.05]); // beat 2, once — the region is ignored
+    expect(hitsOf(60)).toEqual([]);
+    expect(transport.isPlaying).toBe(false);
+    expect(transport.currentBeat()).toBe(2);
+  });
+
+  it('switching the loop off mid-play carries on to the end instead of wrapping', async () => {
+    const { song: s } = song();
+    const two = { ...s, timelineBars: 2, loopRegion: { start: 0, end: 4 } };
+    await transport.play(two, 0, { songLoop: true });
+    runUntil(1.2);
+    transport.refresh({ ...two, loopOff: true });
+    runUntil(5);
+    expect(hitsOf(60)).toEqual([0.05]); // bar 1 does not come round again
+    expect(transport.isPlaying).toBe(false);
+  });
+
+  it('switching it back on mid-play loops the region again', async () => {
+    const { song: s } = song();
+    const two = { ...s, timelineBars: 2, loopRegion: { start: 0, end: 4 }, loopOff: true as const };
+    await transport.play(two, 0, { songLoop: true });
+    runUntil(0.5);
+    const { loopOff: _off, ...on } = two;
+    transport.refresh(on);
     runUntil(4.5);
     expect(hitsOf(60)).toEqual([0.05, 2.05, 4.05]);
   });

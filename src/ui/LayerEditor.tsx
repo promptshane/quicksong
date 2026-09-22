@@ -10,6 +10,7 @@ import {
   auditionNote,
   insertAtCursor,
   insertDetectedNotes,
+  playSong,
   setLayerPickPattern,
   setStrumSlot,
 } from '../state/actions';
@@ -115,8 +116,7 @@ export function LayerEditor({ layerId }: { layerId: string }) {
       return;
     }
     if (transport.isPlaying) transport.stop(cursor);
-    // Play from the cursor through the loop region, then keep looping it.
-    else void transport.play(song, cursor, { loop: true });
+    else playSong();
   };
 
   const isChord = layer.type !== 'single';

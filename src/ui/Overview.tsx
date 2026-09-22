@@ -1,7 +1,7 @@
 import { useTransport } from '../audio/transport';
 import { loopRange, songBars, songBeats } from '../model/time';
 import { scaleDegree } from '../model/keys';
-import { eventRootPitchClass } from '../model/song';
+import { eventRootPitchClass, isLoopOn } from '../model/song';
 import type { AnyLayer, MusicalKey, Song } from '../model/types';
 import { useStore } from '../state/store';
 import { degreeColor } from './degreeColor';
@@ -51,7 +51,7 @@ export function Overview({ song, layer, showPlayhead = true, hits = false, color
         );
       })}
       {/* A custom loop region shows as a gold line along the top. */}
-      {!loop.whole && (
+      {!loop.whole && isLoopOn(song) && (
         <div className="overview-loop" style={{ left: pct(loop.start), width: pct(loop.end - loop.start) }} data-testid="overview-loop" />
       )}
       {showPlayhead && <div className="cursor" style={{ left: pct(cursor) }} />}
