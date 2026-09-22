@@ -41,7 +41,8 @@ export function isPristineSong(song: Song): boolean {
     song.timeSignature.beatUnit === 4 &&
     defaultKey &&
     song.timelineBars === 1 &&
-    song.guitar.layers.length === 0
+    song.guitar.layers.length === 0 &&
+    (song.piano?.layers.length ?? 0) === 0
   );
 }
 
@@ -93,16 +94,21 @@ export function duplicateProjectRecord(source: ProjectRecord, taken: Iterable<st
 }
 
 /**
- * Bring a stored song up to date. Songs saved before explicit timeline slots
- * open at the smallest size that still contains all material — no automatic
- * extra empty bar. Also drops an Auto key preference the material rules out.
+ * Bring a stored song up to date. Songs saved before Piano existed get an
+ * empty piano section. Songs saved before explicit timeline slots open at the
+ * smallest size that still contains all material — no automatic extra empty
+ * bar. Also drops an Auto key preference the material rules out.
  */
 export function normalizeStoredSong(stored: Song): Song {
   let song = stored;
+  const piano = (song as Partial<Song>).piano;
+  if (!piano || !Array.isArray(piano.layers)) {
+    song = { ...song, piano: { layers: [] } };
+  }
   if (!Number.isFinite(song.timelineBars) || song.timelineBars < 1) {
     const perBar = song.timeSignature.beatsPerBar;
     let lastEnd = 0;
-    for (const layer of song.guitar.layers) {
+    for (const layer of [...song.guitar.layers, ...song.piano.layers]) {
       for (const event of layer.events) lastEnd = Math.max(lastEnd, event.start + event.duration);
     }
     song = { ...song, timelineBars: Math.max(1, Math.ceil(lastEnd / perBar - 1e-6)) };

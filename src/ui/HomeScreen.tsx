@@ -7,7 +7,7 @@ import { TopBar } from './TopBar';
 const INSTRUMENTS = [
   { id: 'drums', label: 'Drums', icon: '🥁', enabled: false },
   { id: 'guitar', label: 'Guitar', icon: '🎸', enabled: true },
-  { id: 'piano', label: 'Piano', icon: '🎹', enabled: false },
+  { id: 'piano', label: 'Piano', icon: '🎹', enabled: true },
   { id: 'bass', label: 'Bass', icon: '🎚', enabled: false },
   { id: 'vocals', label: 'Vocals', icon: '🎤', enabled: false },
 ] as const;
@@ -35,7 +35,7 @@ export function HomeScreen() {
       <div className="screen-body">
         <div className="rows">
           {INSTRUMENTS.map((inst) => {
-            const layers = inst.id === 'guitar' ? song.guitar.layers : [];
+            const layers = inst.id === 'guitar' ? song.guitar.layers : inst.id === 'piano' ? song.piano.layers : [];
             return (
               <button
                 key={inst.id}
@@ -44,7 +44,7 @@ export function HomeScreen() {
                 aria-label={inst.label}
                 data-instrument={inst.id}
                 onClick={() => {
-                  if (inst.enabled) setView({ name: 'guitar' });
+                  if (inst.id === 'guitar' || inst.id === 'piano') setView({ name: inst.id });
                   else toast(`${inst.label} is coming later`);
                 }}
               >
@@ -54,7 +54,7 @@ export function HomeScreen() {
                 </div>
                 <div className="row-lane">
                   {layers.length === 0 ? (
-                    <div className="row-empty">{inst.enabled ? 'Tap to add guitar' : inst.label}</div>
+                    <div className="row-empty">{inst.enabled ? `Tap to add ${inst.label.toLowerCase()}` : inst.label}</div>
                   ) : (
                     layers.map((layer) => <Overview key={layer.id} song={song} layer={layer} />)
                   )}

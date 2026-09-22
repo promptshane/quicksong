@@ -13,6 +13,7 @@
   --warn: #fbbf24;
   --chord: #7c9cff;
   --note: #f6a6ff;
+  --piano: #f0d9a8;
   --radius: 12px;
   --tap: 44px;
   --safe-top: env(safe-area-inset-top, 0px);
@@ -326,6 +327,9 @@ input[type='range'] {
 }
 .overview .clip.note {
   background: var(--note);
+}
+.overview .clip.piano {
+  background: var(--piano);
 }
 .playhead {
   position: absolute;
@@ -1391,4 +1395,187 @@ input[type='range'] {
 .add-slot:active {
   background: var(--bg-3);
   color: var(--text);
+}
+
+
+/* ---- piano -------------------------------------------------------------- */
+
+/* Timeline hit: strike height = velocity, ramp to the right = sustain. */
+.block.piano {
+  background: rgba(240, 217, 168, 0.06);
+  color: var(--piano);
+  padding: 0;
+}
+/* The label gets its own strip; the hit is drawn in the space below it. */
+.piano-hit {
+  position: absolute;
+  top: 22px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+.piano-sustain {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.piano-sustain polygon {
+  fill: var(--piano);
+  opacity: 0.22;
+}
+.piano-sustain line {
+  stroke: var(--piano);
+  stroke-width: 2;
+}
+.piano-strike {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 5px;
+  border-radius: 2px;
+  background: var(--piano);
+}
+.piano-label {
+  position: relative;
+  padding: 4px 0 0 7px;
+  font-size: 13px;
+}
+
+.chord-palette {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.palette-chord {
+  min-height: 56px;
+  border-radius: var(--radius);
+  background: var(--bg-3);
+  font-size: 20px;
+  font-weight: 650;
+}
+.palette-chord:active {
+  filter: brightness(1.25);
+}
+.palette-chord.on {
+  background: var(--piano);
+  color: #1d1708;
+}
+
+.piano-chord-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.piano-chord-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: var(--tap);
+  min-width: 0;
+  color: var(--piano);
+}
+.piano-chord-name b {
+  font-size: 26px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.piano-chord-name small {
+  color: var(--text-dim);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.tone.added {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.editor-bar.centered {
+  justify-content: center;
+}
+.panel-hint.compact {
+  padding: 0 4px;
+}
+
+/* Special-chord wheel: chord in the middle, twelve notes around it. */
+.note-wheel {
+  position: relative;
+  width: min(300px, 100%);
+  aspect-ratio: 1;
+  margin: 0 auto;
+}
+.note-wheel-shape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.note-wheel-shape circle {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 0.5;
+}
+.note-wheel-shape polygon {
+  fill: rgba(240, 217, 168, 0.12);
+  stroke: var(--piano);
+  stroke-width: 0.6;
+  stroke-linejoin: round;
+}
+.note-wheel-hub {
+  position: absolute;
+  inset: 32%;
+  border-radius: 999px;
+  background: var(--bg-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 6px;
+}
+.note-wheel-hub b {
+  font-size: 18px;
+  line-height: 1.2;
+  color: var(--piano);
+}
+.note-wheel-note {
+  position: absolute;
+  width: 46px;
+  height: 46px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 650;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* The chord's own notes: fixed and solid. */
+.note-wheel-note[data-state='chord'] {
+  background: var(--piano);
+  color: #1d1708;
+  opacity: 1;
+}
+/* Notes the user added: the accent, tap to remove. */
+.note-wheel-note[data-state='added'] {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+/* In the song's key: the natural choices. */
+.note-wheel-note[data-state='key'] {
+  background: var(--bg-3);
+  color: var(--text);
+  border: 1.5px solid var(--text-dim);
+}
+/* Outside the key: still available, visually secondary. */
+.note-wheel-note[data-state='outside'] {
+  background: transparent;
+  color: var(--text-faint);
+  border: 1px dashed var(--line);
+  font-weight: 500;
+}
+.note-wheel-note:active:not(:disabled) {
+  filter: brightness(1.3);
 }

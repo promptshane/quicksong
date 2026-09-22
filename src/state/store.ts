@@ -22,7 +22,13 @@ import {
   scheduleProjectSave,
 } from './persistence';
 
-export type View = { name: 'projects' } | { name: 'home' } | { name: 'guitar' } | { name: 'layer'; layerId: string };
+export type View =
+  | { name: 'projects' }
+  | { name: 'home' }
+  | { name: 'guitar' }
+  | { name: 'layer'; layerId: string }
+  | { name: 'piano' }
+  | { name: 'pianoLayer'; layerId: string };
 
 const HISTORY_LIMIT = 200;
 
@@ -49,12 +55,19 @@ interface StoreState {
    * having to switch it on again.
    */
   recording: boolean;
+  /** Coalescing key of the most recent commit; see `commit`. */
+  lastCommitKey: string | null;
 
   /**
    * Apply an editing action. `fn` receives the current song and returns the
    * next one; the previous song is pushed onto the undo stack.
+   *
+   * `coalesceKey` merges a continuous gesture (a slider drag) into one undo
+   * step: consecutive commits with the same key replace the song without
+   * pushing more history. Any other commit, undo, redo or selection change
+   * ends the gesture.
    */
-  commit: (fn: (song: Song) => Song) => void;
+  commit: (fn: (song: Song) => Song, coalesceKey?: string) => void;
   /** Replace the song without touching history (hydration, drag preview). */
   replaceSong: (song: Song) => void;
   undo: () => void;
@@ -98,6 +111,7 @@ function freshSession(song: Song, activeProjectId: string | null, view: View) {
     selectedEventId: null,
     cursorBeat: 0,
     recording: false,
+    lastCommitKey: null,
   };
 }
 
@@ -114,17 +128,20 @@ export const useStore = create<StoreState>((set, get) => ({
   cursorBeat: 0,
   keyboardBase: 48,
   recording: false,
+  lastCommitKey: null,
 
-  commit: (fn) => {
-    const { song, past, cursorBeat } = get();
+  commit: (fn, coalesceKey) => {
+    const { song, past, cursorBeat, lastCommitKey } = get();
     // Every edit may rule out a preferred Auto key; drop it in the same step.
     const next = reconcileKeyPreference(fn(song));
     if (next === song) return;
+    const merge = coalesceKey !== undefined && coalesceKey === lastCommitKey && past.length > 0;
     set({
       song: next,
-      past: [...past.slice(-(HISTORY_LIMIT - 1)), song],
+      past: merge ? past : [...past.slice(-(HISTORY_LIMIT - 1)), song],
       future: [],
       cursorBeat: clampCursor(cursorBeat, next),
+      lastCommitKey: coalesceKey ?? null,
     });
   },
 
@@ -134,18 +151,24 @@ export const useStore = create<StoreState>((set, get) => ({
     const { past, song, future } = get();
     if (past.length === 0) return;
     const previous = past[past.length - 1];
-    set({ song: previous, past: past.slice(0, -1), future: [song, ...future], cursorBeat: clampCursor(get().cursorBeat, previous) });
+    set({
+      song: previous,
+      past: past.slice(0, -1),
+      future: [song, ...future],
+      cursorBeat: clampCursor(get().cursorBeat, previous),
+      lastCommitKey: null,
+    });
   },
 
   redo: () => {
     const { past, song, future } = get();
     if (future.length === 0) return;
     const [next, ...rest] = future;
-    set({ song: next, past: [...past, song], future: rest, cursorBeat: clampCursor(get().cursorBeat, next) });
+    set({ song: next, past: [...past, song], future: rest, cursorBeat: clampCursor(get().cursorBeat, next), lastCommitKey: null });
   },
 
-  setView: (view) => set({ view, selectedEventId: null, recording: false }),
-  select: (selectedEventId) => set({ selectedEventId }),
+  setView: (view) => set({ view, selectedEventId: null, recording: false, lastCommitKey: null }),
+  select: (selectedEventId) => set({ selectedEventId, lastCommitKey: null }),
   setCursor: (cursorBeat) => set({ cursorBeat: clampCursor(cursorBeat, get().song) }),
   setKeyboardBase: (keyboardBase) => set({ keyboardBase }),
   setRecording: (recording) => set({ recording }),

@@ -1,11 +1,11 @@
 import { useTransport } from '../audio/transport';
 import { songBars, songBeats } from '../model/time';
-import type { GuitarLayer, Song } from '../model/types';
+import type { AnyLayer, Song } from '../model/types';
 import { useStore } from '../state/store';
 
 interface OverviewProps {
   song: Song;
-  layer: GuitarLayer;
+  layer: AnyLayer;
   showPlayhead?: boolean;
 }
 

@@ -1,19 +1,11 @@
 import { changeEventDuration, moveEvent, setEventVelocity } from '../state/actions';
-import { eighthBeats, positionLabel } from '../model/time';
+import { durationLabel, eighthBeats, positionLabel } from '../model/time';
 import type { AnyEvent, TimeSignature } from '../model/types';
 
 interface EventControlsProps {
   layerId: string;
   event: AnyEvent;
   timeSignature: TimeSignature;
-}
-
-function durationLabel(beats: number, ts: TimeSignature): string {
-  if (beats >= ts.beatsPerBar && Math.abs(beats % ts.beatsPerBar) < 1e-6) {
-    const bars = beats / ts.beatsPerBar;
-    return `${bars} bar${bars === 1 ? '' : 's'}`;
-  }
-  return `${Number(beats.toFixed(2))} beat${beats === 1 ? '' : 's'}`;
 }
 
 /** Duration, position and velocity — shared by notes and chords. */

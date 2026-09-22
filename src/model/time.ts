@@ -55,7 +55,7 @@ export function secondsToBeats(seconds: number, bpm: number): number {
 /** Last beat that contains any event. */
 export function lastEventEnd(song: Song): number {
   let end = 0;
-  for (const layer of song.guitar.layers) {
+  for (const layer of [...song.guitar.layers, ...song.piano.layers]) {
     for (const ev of layer.events) end = Math.max(end, ev.start + ev.duration);
   }
   return end;
@@ -86,4 +86,13 @@ export function positionLabel(beat: number, ts: TimeSignature): string {
   const inBar = Math.floor(within + 1e-6) + 1;
   const offbeat = within - Math.floor(within + 1e-6) > 1e-6;
   return `${bar}.${inBar}${offbeat ? '&' : ''}`;
+}
+
+/** Length label like "2 beats" or "1 bar". */
+export function durationLabel(beats: number, ts: TimeSignature): string {
+  if (beats >= ts.beatsPerBar && Math.abs(beats % ts.beatsPerBar) < 1e-6) {
+    const bars = beats / ts.beatsPerBar;
+    return `${bars} bar${bars === 1 ? '' : 's'}`;
+  }
+  return `${Number(beats.toFixed(2))} beat${beats === 1 ? '' : 's'}`;
 }

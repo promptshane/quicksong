@@ -7,8 +7,9 @@ import {
 } from 'react';
 import { useTransport } from '../audio/transport';
 import { chordName, midiToName } from '../model/music';
+import { pianoChordName } from '../model/piano';
 import { eighthBeats, snapToEighth, songBars, songBeats } from '../model/time';
-import type { AnyEvent, GuitarLayer, Song } from '../model/types';
+import type { AnyEvent, AnyLayer, PianoEvent, Song } from '../model/types';
 import { addTimelineSlot, deleteEvent, moveEvent } from '../state/actions';
 import { useStore } from '../state/store';
 import { Sheet } from './Sheet';
@@ -20,11 +21,33 @@ const LONG_PRESS_MS = 550;
 
 interface TimelineProps {
   song: Song;
-  layer: GuitarLayer;
+  layer: AnyLayer;
 }
 
 function eventLabel(ev: AnyEvent): string {
-  return ev.kind === 'note' ? midiToName(ev.midi) : chordName(ev.root, ev.quality);
+  if (ev.kind === 'note') return midiToName(ev.midi);
+  if (ev.kind === 'piano') return pianoChordName(ev);
+  return chordName(ev.root, ev.quality);
+}
+
+/**
+ * A piano hit drawn as what it is: a vertical strike whose height is the
+ * velocity, then a line ramping down across the sustain to the key release.
+ */
+function PianoStrike({ event }: { event: PianoEvent }) {
+  const top = 100 - Math.round(event.velocity * 100);
+  return (
+    <>
+      <span className="piano-label">{eventLabel(event)}</span>
+      <span className="piano-hit" aria-hidden>
+        <svg className="piano-sustain" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <polygon points={`0,${top} 100,100 0,100`} />
+          <line x1="0" y1={top} x2="100" y2="100" vectorEffect="non-scaling-stroke" />
+        </svg>
+        <span className="piano-strike" style={{ height: `${event.velocity * 100}%` }} />
+      </span>
+    </>
+  );
 }
 
 /**
@@ -173,7 +196,7 @@ export function Timeline({ song, layer }: TimelineProps) {
           </div>
           {gridLines}
           <div className="lane" style={{ width: contentWidth, right: 'auto' }}>
-            {layer.events.map((ev) => (
+            {(layer.events as AnyEvent[]).map((ev) => (
               <div
                 key={ev.id}
                 className={`block ${ev.kind} ${ev.id === selectedId ? 'selected' : ''} ${
@@ -188,7 +211,7 @@ export function Timeline({ song, layer }: TimelineProps) {
                 role="button"
                 aria-label={eventLabel(ev)}
               >
-                {eventLabel(ev)}
+                {ev.kind === 'piano' ? <PianoStrike event={ev} /> : eventLabel(ev)}
                 {ev.kind === 'chord' && ev.quality === 'note' && <small>tap Major/Minor</small>}
               </div>
             ))}

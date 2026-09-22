@@ -1,6 +1,6 @@
 import { activeStringNumbers, soundingNotes, stringIndex, stringMidi } from '../model/chords';
 import { eighthBeats, songBeats } from '../model/time';
-import type { ChordEvent, PickedLayer, Song, StrumLayer } from '../model/types';
+import type { ChordEvent, PianoEvent, PianoLayer, PickedLayer, Song, StrumLayer } from '../model/types';
 
 /**
  * A single note to play, in song time. Produced by `renderSong` — the pure
@@ -112,6 +112,28 @@ function renderPickedLayer(song: Song, layer: PickedLayer, out: ScheduledNote[])
   }
 }
 
+/**
+ * Piano hits are struck, not strummed: every key of a chord starts at the
+ * same instant and is held for the event's duration (its sustain).
+ */
+function renderPianoLayer(layer: PianoLayer, out: ScheduledNote[]): void {
+  const gain = layer.muted ? 0 : layer.volume;
+  for (const ev of layer.events) {
+    for (const midi of ev.notes) {
+      out.push({
+        layerId: layer.id,
+        eventId: ev.id,
+        midi,
+        velocity: ev.velocity,
+        beat: ev.start,
+        durationBeats: ev.duration,
+        offsetSec: 0,
+        gain,
+      });
+    }
+  }
+}
+
 /** Flatten the whole song into notes, sorted by time. */
 export function renderSong(song: Song): ScheduledNote[] {
   const out: ScheduledNote[] = [];
@@ -136,10 +158,16 @@ export function renderSong(song: Song): ScheduledNote[] {
       renderPickedLayer(song, layer, out);
     }
   }
+  for (const layer of song.piano.layers) renderPianoLayer(layer, out);
   return out.sort((a, b) => a.beat - b.beat || a.offsetSec - b.offsetSec);
 }
 
 /** Notes to play when previewing one chord on its own (a quick down-strum). */
 export function renderChordPreview(chord: ChordEvent): { midi: number; offsetSec: number }[] {
   return soundingNotes(chord.strings).map((n, i) => ({ midi: n.midi, offsetSec: i * STRUM_STAGGER_SEC }));
+}
+
+/** Notes to play when previewing one piano chord: all keys together. */
+export function renderPianoPreview(event: Pick<PianoEvent, 'notes'>): { midi: number; offsetSec: number }[] {
+  return event.notes.map((midi) => ({ midi, offsetSec: 0 }));
 }

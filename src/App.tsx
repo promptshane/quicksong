@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { transport } from './audio/transport';
 import { useStore } from './state/store';
-import { GuitarFocus } from './ui/GuitarFocus';
+import { InstrumentFocus } from './ui/InstrumentFocus';
 import { HomeScreen } from './ui/HomeScreen';
 import { LayerEditor } from './ui/LayerEditor';
+import { PianoLayerEditor } from './ui/PianoLayerEditor';
 import { ProjectsScreen } from './ui/ProjectsScreen';
 import { ToastHost } from './ui/Toast';
 
@@ -39,7 +40,8 @@ export function App() {
   let screen;
   if (view.name === 'projects') screen = <ProjectsScreen />;
   else if (view.name === 'home') screen = <HomeScreen />;
-  else if (view.name === 'guitar') screen = <GuitarFocus />;
+  else if (view.name === 'guitar' || view.name === 'piano') screen = <InstrumentFocus instrument={view.name} />;
+  else if (view.name === 'pianoLayer') screen = <PianoLayerEditor layerId={view.layerId} />;
   else screen = <LayerEditor layerId={view.layerId} />;
 
   return (

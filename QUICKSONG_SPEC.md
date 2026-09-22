@@ -53,6 +53,8 @@ V1 development should begin with:
 
 The guitar workflow and UI should be tested and refined before expanding the same underlying concepts to the other instruments. Guitar is intentionally the first instrument because its interaction model is comparatively complex and will establish useful patterns for the rest of the app.
 
+Piano is now enabled as the second instrument (see **7. Piano**). Drums, bass, and vocals remain locked.
+
 ---
 
 ## 3. Guitar
@@ -263,10 +265,10 @@ Each instrument row represents its place in the song timeline.
 - Existing content must never be clipped if it extends farther than the explicit slot count.
 - There is no requirement to maintain a fixed four-bar minimum.
 
-For the first build:
+Currently:
 
-- Guitar is enabled.
-- Other instruments remain visible but locked/disabled.
+- Guitar and Piano are enabled.
+- Drums, bass, and vocals remain visible but locked/disabled.
 
 **Bottom bar:**
 
@@ -427,6 +429,83 @@ Pending debounced saves are bound to the project ID and song snapshot they were 
 ### Legacy Migration
 
 Earlier versions saved a single song under one storage key. On first launch after the update that song is migrated, unchanged, into a project named **Untitled Project**. The migration is idempotent: the migrated project uses a fixed ID and the legacy key is removed after a successful migration, so relaunching never creates duplicates. With no legacy song, Projects starts empty.
+
+---
+
+## 7. Piano
+
+Piano separates two decisions:
+
+- **Sound** — what is played: a standard chord from the song's key, optionally made special with extra notes.
+- **Rhythm** — when and how it is played: timing, velocity and sustain.
+
+This first version deliberately keeps rhythm simple (see *Deferred* below).
+
+### Navigation
+
+```
+Projects → Song Home → Piano → Piano Layer
+```
+
+Piano has one kind of layer, so **+ Layer** creates a layer (*Piano 1*, *Piano 2*, …) and opens it immediately. The Piano overview otherwise behaves like Guitar's: open, mute, delete, and hold a layer to duplicate it. Multiple piano layers play simultaneously, alongside guitar, on Song Home, in project previews and during playback.
+
+### Piano chords are notes, not voicings
+
+A piano chord is stored as the **actual keys pressed** (MIDI notes), never as a guitar string/fret shape. Each piano hit records:
+
+- the **root** and **major/minor quality** of the standard chord it was picked as;
+- the **sounding notes**;
+- **start**, **velocity** and **duration** (the sustain).
+
+Example: D major = D F# A; D major plus C# = D F# A C#. Standard chords are voiced in root position around middle C (root between F3 and E4). Because a chord is a note list, inversions/voicings and single piano notes can be added later without changing the model. Songs saved before Piano existed load with an empty piano section.
+
+### Choosing a chord
+
+A new or empty selection shows **Chords in _key_**: the six diatonic major/minor chords of the song's key, in scale order (e.g. C major → C Dm Em F G Am). The diminished chord is left out for now. The user never picks a root and then Major/Minor — they tap the chord itself.
+
+- **Manual key** → that key's chords.
+- **Auto** → the currently assumed key (an Auto preference, or inference from committed material). Piano chords count as committed material for key inference and the Circle of Fifths.
+- **Auto with nothing committed** → C major, or A minor when the Major/Minor toggle says minor, labelled as a starting guess.
+
+Tapping a chord **previews** it (all notes struck together) and arms it; it does not change the song. **Add _chord_ at _position_** commits it at the cursor as a one-bar hit. A hit still ringing at that point is lifted there. The new hit is selected for shaping.
+
+**＋ Next chord** moves the cursor to where the selected hit ends and returns to the palette. If the hit already reaches the end of the song, this adds one timeline slot — the user is explicitly asking for room — rather than any automatic trailing bar.
+
+**Change chord** swaps the selected hit to another chord from the palette, keeping its timing, velocity and sustain.
+
+### Special-chord wheel
+
+**✦ Special chord** opens a wheel with the chord in the centre and the twelve notes around it, starting from the chord's root at the top and rising clockwise (so a chord's shape looks the same in every key):
+
+- the chord's own notes are solid and fixed;
+- notes in the song's key are bright — the natural choices;
+- notes outside the key are quieter but still fully available;
+- notes the user added are highlighted and a line joins every sounding note.
+
+Tapping a note adds it on top of the chord and immediately plays the result; tapping an added note removes it. **Back to plain _chord_** removes all added notes. The chord's name is shown when it can be named confidently (Dmaj7, Am7, Cadd9, C9, …); otherwise it reads as the chord plus its extra notes (e.g. *C + F#*). Knowing chord names is never required.
+
+### Velocity and sustain
+
+The selected hit has two sliders:
+
+- **Velocity** — how hard the keys are struck (soft / medium / hard). Separate from layer volume.
+- **Sustain** — how long the keys are held, in eighth-note steps (up to two bars).
+
+Releasing a slider plays the hit so the change can be heard. One continuous drag is one Undo step.
+
+On the timeline each piano hit is drawn as what it is: horizontal position = timing, a vertical **strike** whose height is the velocity, and a line ramping down to the right across the **sustain**. Hits can be moved by dragging and deleted by holding, as on Guitar.
+
+Every piano edit — adding, changing, wheel notes, velocity, sustain, moving, deleting — is undoable with Undo/Redo.
+
+### Deferred
+
+Intentionally not part of this version:
+
+- tapping in real time to place the next chord, or cycling through a chord sequence while tapping;
+- repeated/intra-chord hits, strumming-style patterns, sixteenth notes, advanced quantization, humanization;
+- inversions/voicing controls and single-note piano composition;
+- humming or keyboard input on piano layers;
+- realistic piano samples (Piano currently uses the shared V1 synth, struck rather than strummed).
 
 ---
 

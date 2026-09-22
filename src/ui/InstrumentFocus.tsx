@@ -1,7 +1,8 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { LAYER_TYPE_LABELS, createLayer, duplicateLayer } from '../model/song';
-import type { GuitarLayerType } from '../model/types';
-import { useStore } from '../state/store';
+import { createPianoLayer, duplicatePianoLayer } from '../model/piano';
+import { LAYER_TYPE_LABELS, appendLayer, createLayer, duplicateLayer, removeLayer, toggleLayerMute } from '../model/song';
+import type { AnyLayer, GuitarLayerType, Song } from '../model/types';
+import { useStore, type View } from '../state/store';
 import { Overview } from './Overview';
 import { PlayButton } from './PlayButton';
 import { Sheet } from './Sheet';
@@ -12,10 +13,47 @@ const TYPE_OPTIONS: { type: GuitarLayerType; hint: string }[] = [
   { type: 'single', hint: 'Individual notes — melodies and riffs' },
 ];
 
-export function GuitarFocus() {
+export type InstrumentId = 'guitar' | 'piano';
+
+interface InstrumentConfig {
+  title: string;
+  layers: (song: Song) => AnyLayer[];
+  /** Guitar asks which kind of layer; Piano has one kind and adds it directly. */
+  askType: boolean;
+  summary: (layer: AnyLayer) => string;
+  duplicate: (song: Song, layerId: string) => Song;
+  layerView: (layerId: string) => View;
+}
+
+const INSTRUMENTS: Record<InstrumentId, InstrumentConfig> = {
+  guitar: {
+    title: 'Guitar',
+    layers: (song) => song.guitar.layers,
+    askType: true,
+    summary: (layer) =>
+      layer.type === 'piano'
+        ? ''
+        : `${LAYER_TYPE_LABELS[layer.type]} · ${layer.events.length} ${layer.type === 'single' ? 'notes' : 'chords'}`,
+    duplicate: duplicateLayer,
+    layerView: (layerId) => ({ name: 'layer', layerId }),
+  },
+  piano: {
+    title: 'Piano',
+    layers: (song) => song.piano.layers,
+    askType: false,
+    summary: (layer) => `${layer.events.length} chord${layer.events.length === 1 ? '' : 's'}`,
+    duplicate: duplicatePianoLayer,
+    layerView: (layerId) => ({ name: 'pianoLayer', layerId }),
+  },
+};
+
+/** An instrument's layer list: add, open, mute, delete, and hold to duplicate. */
+export function InstrumentFocus({ instrument }: { instrument: InstrumentId }) {
+  const config = INSTRUMENTS[instrument];
   const song = useStore((s) => s.song);
   const commit = useStore((s) => s.commit);
   const setView = useStore((s) => s.setView);
+  const layers = config.layers(song);
   const [picking, setPicking] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [duplicateTarget, setDuplicateTarget] = useState<string | null>(null);
@@ -27,23 +65,20 @@ export function GuitarFocus() {
   } | null>(null);
   const suppressOpen = useRef<string | null>(null);
 
-  const addLayer = (type: GuitarLayerType) => {
-    const layer = createLayer(type, song);
-    commit((s) => ({ ...s, guitar: { ...s.guitar, layers: [...s.guitar.layers, layer] } }));
+  const addLayer = (type?: GuitarLayerType) => {
+    const layer = type ? createLayer(type, song) : createPianoLayer(song);
+    commit((s) => appendLayer(s, layer));
     setPicking(false);
-    setView({ name: 'layer', layerId: layer.id });
+    setView(config.layerView(layer.id));
   };
 
   const deleteLayer = (id: string) => {
-    commit((s) => ({ ...s, guitar: { ...s.guitar, layers: s.guitar.layers.filter((l) => l.id !== id) } }));
+    commit((s) => removeLayer(s, id));
     setConfirmDelete(null);
   };
 
   const toggleMute = (id: string) => {
-    commit((s) => ({
-      ...s,
-      guitar: { ...s.guitar, layers: s.guitar.layers.map((l) => (l.id === id ? { ...l, muted: !l.muted } : l)) },
-    }));
+    commit((s) => toggleLayerMute(s, id));
   };
 
   const clearLayerHold = () => {
@@ -79,7 +114,7 @@ export function GuitarFocus() {
       suppressOpen.current = null;
       return;
     }
-    setView({ name: 'layer', layerId: id });
+    setView(config.layerView(id));
   };
 
   const closeDuplicate = () => {
@@ -88,36 +123,40 @@ export function GuitarFocus() {
   };
 
   const duplicateSelectedLayer = (id: string) => {
-    commit((s) => duplicateLayer(s, id));
+    commit((s) => config.duplicate(s, id));
     closeDuplicate();
   };
 
   return (
-    <div className="screen" data-screen="guitar">
+    <div className="screen" data-screen={instrument}>
       <div className="header">
         <div className="header-side">
           <button className="btn ghost" onClick={() => setView({ name: 'home' })} aria-label="Back to song">
             ‹ Song
           </button>
         </div>
-        <div className="header-title">Guitar</div>
+        <div className="header-title">{config.title}</div>
         <div className="header-side right">
-          <button className="btn primary small" onClick={() => setPicking(true)} data-testid="add-layer">
+          <button
+            className="btn primary small"
+            onClick={() => (config.askType ? setPicking(true) : addLayer())}
+            data-testid="add-layer"
+          >
             + Layer
           </button>
         </div>
       </div>
 
       <div className="screen-body">
-        {song.guitar.layers.length === 0 ? (
+        {layers.length === 0 ? (
           <div className="empty-state">
-            No guitar layers yet.
+            No {config.title.toLowerCase()} layers yet.
             <br />
             Add one to start writing.
           </div>
         ) : (
           <div className="layer-list">
-            {song.guitar.layers.map((layer) => (
+            {layers.map((layer) => (
               <div
                 key={layer.id}
                 className="layer-card"
@@ -135,10 +174,7 @@ export function GuitarFocus() {
                     data-testid="open-layer"
                   >
                     <b>{layer.name}</b>
-                    <small>
-                      {LAYER_TYPE_LABELS[layer.type]} · {layer.events.length}{' '}
-                      {layer.type === 'single' ? 'notes' : 'chords'}
-                    </small>
+                    <small>{config.summary(layer)}</small>
                   </button>
                   <button
                     className={`btn small ${layer.muted ? 'active' : 'ghost'}`}

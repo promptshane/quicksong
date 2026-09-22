@@ -1,21 +1,25 @@
 import { getAudioEngine } from '../audio/engine';
-import { renderChordPreview } from '../audio/render';
+import { renderChordPreview, renderPianoPreview } from '../audio/render';
 import { relabelChord, setStringMuted, shiftStringFret, voicingsFor } from '../model/chords';
 import { clampMidi } from '../model/music';
+import { createPianoChord, setPianoChord, togglePianoNote } from '../model/piano';
 import {
   addEvent,
   addToneToChord,
   buildChord,
   createNoteEvent,
   createSeedChord,
+  findAnyLayer,
   findLayer,
+  findPianoLayer,
   isChordLayer,
   removeEvent,
   updateEvent,
   updateLayer,
+  updatePianoLayer,
 } from '../model/song';
-import { beatsToSeconds, eighthBeats, snapToEighth, songBars } from '../model/time';
-import type { AnyEvent, ChordEvent, ChordQuality, NoteEvent, Song } from '../model/types';
+import { beatsToSeconds, eighthBeats, snapToEighth, songBars, songBeats } from '../model/time';
+import type { AnyEvent, ChordEvent, ChordQuality, NoteEvent, PianoEvent, PitchClass, Song } from '../model/types';
 import { useStore } from './store';
 
 /**
@@ -31,6 +35,12 @@ export function auditionNote(midi: number, velocity = 0.8, seconds = 0.6): void 
 export function auditionChord(chord: ChordEvent, seconds = 1.2): void {
   const engine = getAudioEngine();
   for (const n of renderChordPreview(chord)) void engine.play(n.midi, chord.velocity, seconds, n.offsetSec);
+}
+
+/** Hear a piano chord: every key at once, held for `seconds`. */
+export function auditionPianoChord(event: Pick<PianoEvent, 'notes' | 'velocity'>, seconds = 1.6): void {
+  const engine = getAudioEngine();
+  for (const n of renderPianoPreview(event)) void engine.play(n.midi, event.velocity, seconds, n.offsetSec);
 }
 
 function chordDefaultDuration(song: Song): number {
@@ -111,9 +121,9 @@ export function insertDetectedNotes(
 
 export function getSelectedEvent(): { layerId: string; event: AnyEvent } | null {
   const { song, view, selectedEventId } = useStore.getState();
-  if (view.name !== 'layer' || !selectedEventId) return null;
-  const layer = findLayer(song, view.layerId);
-  const event = layer?.events.find((e) => e.id === selectedEventId);
+  if ((view.name !== 'layer' && view.name !== 'pianoLayer') || !selectedEventId) return null;
+  const layer = findAnyLayer(song, view.layerId);
+  const event = (layer?.events as AnyEvent[] | undefined)?.find((e) => e.id === selectedEventId);
   return layer && event ? { layerId: layer.id, event } : null;
 }
 
@@ -181,9 +191,17 @@ export function shiftNotePitch(layerId: string, noteId: string, delta: number): 
   editNote(layerId, noteId, (n) => ({ ...n, midi: clampMidi(n.midi + delta) }));
 }
 
-export function setEventVelocity(layerId: string, eventId: string, velocity: number): void {
+/** `coalesceKey` merges one continuous slider drag into a single undo step. */
+export function setEventVelocity(layerId: string, eventId: string, velocity: number, coalesceKey?: string): void {
   const { commit } = useStore.getState();
-  commit((s) => updateEvent(s, layerId, eventId, (e) => ({ ...e, velocity })));
+  commit((s) => updateEvent(s, layerId, eventId, (e) => (e.velocity === velocity ? e : { ...e, velocity })), coalesceKey);
+}
+
+/** Set an event's length (a piano hit's sustain) directly, in beats. */
+export function setEventDuration(layerId: string, eventId: string, beats: number, coalesceKey?: string): void {
+  const { commit, song } = useStore.getState();
+  const duration = Math.max(eighthBeats(song.timeSignature), beats);
+  commit((s) => updateEvent(s, layerId, eventId, (e) => (e.duration === duration ? e : { ...e, duration })), coalesceKey);
 }
 
 export function changeEventDuration(layerId: string, eventId: string, deltaBeats: number): void {
@@ -236,7 +254,77 @@ export function setLayerPickPattern(layerId: string, pattern: number[]): void {
 /** Play just the selected event so the user can judge it. */
 export function auditionEvent(event: AnyEvent, bpm: number): void {
   if (event.kind === 'note') auditionNote(event.midi, event.velocity, beatsToSeconds(event.duration, bpm));
+  else if (event.kind === 'piano') auditionPianoChord(event, Math.min(PIANO_PREVIEW_MAX_SEC, beatsToSeconds(event.duration, bpm)));
   else auditionChord(event, Math.min(2, beatsToSeconds(event.duration, bpm)));
+}
+
+// ---- piano ------------------------------------------------------------------
+
+/** Long enough to hear a sustain difference, short enough not to drag on. */
+const PIANO_PREVIEW_MAX_SEC = 4;
+
+/**
+ * Add a standard chord at the cursor as one piano hit lasting a bar. A hit
+ * already ringing at that point is lifted there, like moving your hands to
+ * the next chord. Returns the new event's id.
+ */
+export function addPianoChord(layerId: string, root: PitchClass, quality: ChordQuality): string | null {
+  const { song, cursorBeat, commit, setCursor, select } = useStore.getState();
+  if (!findPianoLayer(song, layerId)) return null;
+  const ts = song.timeSignature;
+  const start = snapToEighth(cursorBeat, ts);
+  const event = createPianoChord(root, quality, start, ts.beatsPerBar);
+  commit((s) => {
+    const lifted = updatePianoLayer(s, layerId, (layer) => ({
+      ...layer,
+      events: layer.events.map((e) =>
+        e.start < start - 1e-6 && e.start + e.duration > start + 1e-6 ? { ...e, duration: Math.max(eighthBeats(ts), start - e.start) } : e,
+      ),
+    }));
+    return addEvent(lifted, layerId, event);
+  });
+  setCursor(start + event.duration);
+  select(event.id);
+  return event.id;
+}
+
+/**
+ * "Next chord": put the cursor where this hit ends and clear the selection,
+ * ready to add the next one. If the hit already runs to the end of the song
+ * there is no room left, so this is the user asking for another slot — the
+ * same explicit action as + Slot, never an automatic trailing bar.
+ */
+export function cursorAfterEvent(layerId: string, eventId: string): void {
+  const { song, setCursor, select } = useStore.getState();
+  const event = findPianoLayer(song, layerId)?.events.find((e) => e.id === eventId);
+  if (!event) return;
+  const end = event.start + event.duration;
+  if (end >= songBeats(song) - 1e-6) addTimelineSlot();
+  setCursor(end);
+  select(null);
+}
+
+function editPianoChord(layerId: string, eventId: string, fn: (e: PianoEvent) => PianoEvent): void {
+  const { commit, song } = useStore.getState();
+  let result: PianoEvent | null = null;
+  commit((s) =>
+    updateEvent(s, layerId, eventId, (e) => {
+      if (e.kind !== 'piano') return e;
+      result = fn(e);
+      return result;
+    }),
+  );
+  if (result) auditionEvent(result, song.bpm);
+}
+
+/** Swap a hit to another standard chord (drops any wheel notes). */
+export function changePianoChord(layerId: string, eventId: string, root: PitchClass, quality: ChordQuality): void {
+  editPianoChord(layerId, eventId, (e) => setPianoChord(e, root, quality));
+}
+
+/** Note wheel: add a pitch to the chord, or take an added one away, and hear the result. */
+export function togglePianoChordNote(layerId: string, eventId: string, pc: PitchClass): void {
+  editPianoChord(layerId, eventId, (e) => togglePianoNote(e, pc));
 }
 
 export { isChordLayer };

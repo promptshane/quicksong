@@ -134,7 +134,37 @@ export interface PickedLayer extends GuitarLayerBase {
 
 export type GuitarLayer = SingleNoteLayer | StrumLayer | PickedLayer;
 export type ChordLayer = StrumLayer | PickedLayer;
-export type AnyEvent = NoteEvent | ChordEvent;
+
+/**
+ * One piano hit. Unlike a guitar chord this is not a fingering: it is the set
+ * of keys actually pressed. `root` + `quality` remember the standard chord the
+ * user picked from the key; `notes` is the truth for playback and may contain
+ * extra tones added on the note wheel (D F# A + C#). A future voicing/inversion
+ * editor only has to rewrite `notes`; a single piano note is just one entry.
+ *
+ * `start` is when the keys are struck, `velocity` how hard, and `duration`
+ * how long they are held (sustain) — one event is one strike.
+ */
+export interface PianoEvent extends EventBase {
+  kind: 'piano';
+  root: PitchClass;
+  quality: ChordQuality;
+  /** Sounding MIDI notes, low to high, no duplicates. */
+  notes: number[];
+}
+
+export interface PianoLayer {
+  id: string;
+  type: 'piano';
+  name: string;
+  /** Track-level volume, 0..1. Distinct from event velocity. */
+  volume: number;
+  muted: boolean;
+  events: PianoEvent[];
+}
+
+export type AnyLayer = GuitarLayer | PianoLayer;
+export type AnyEvent = NoteEvent | ChordEvent | PianoEvent;
 
 export interface Song {
   version: 1;
@@ -146,6 +176,10 @@ export interface Song {
   timelineBars: number;
   guitar: {
     layers: GuitarLayer[];
+  };
+  /** Absent in songs saved before Piano existed; `normalizeStoredSong` fills it in. */
+  piano: {
+    layers: PianoLayer[];
   };
 }
 

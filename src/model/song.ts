@@ -5,6 +5,7 @@ import { pitchClassOf } from './music';
 import { DEFAULT_TIME_SIGNATURE, eighthsPerBar } from './time';
 import type {
   AnyEvent,
+  AnyLayer,
   ChordEvent,
   ChordLayer,
   ChordQuality,
@@ -13,6 +14,7 @@ import type {
   KeySetting,
   MusicalKey,
   NoteEvent,
+  PianoLayer,
   PickedLayer,
   SingleNoteLayer,
   Song,
@@ -32,6 +34,7 @@ export function createSong(): Song {
     key: { mode: 'auto' },
     timelineBars: 1,
     guitar: { layers: [] },
+    piano: { layers: [] },
   };
 }
 
@@ -192,6 +195,19 @@ export function findLayer(song: Song, layerId: string): GuitarLayer | undefined 
   return song.guitar.layers.find((l) => l.id === layerId);
 }
 
+export function findPianoLayer(song: Song, layerId: string): PianoLayer | undefined {
+  return song.piano.layers.find((l) => l.id === layerId);
+}
+
+/** Every layer of every instrument. Layer ids are unique across instruments. */
+export function allLayers(song: Song): AnyLayer[] {
+  return [...song.guitar.layers, ...song.piano.layers];
+}
+
+export function findAnyLayer(song: Song, layerId: string): AnyLayer | undefined {
+  return findLayer(song, layerId) ?? findPianoLayer(song, layerId);
+}
+
 export function updateLayer(song: Song, layerId: string, fn: (layer: GuitarLayer) => GuitarLayer): Song {
   return {
     ...song,
@@ -199,11 +215,46 @@ export function updateLayer(song: Song, layerId: string, fn: (layer: GuitarLayer
   };
 }
 
+export function updatePianoLayer(song: Song, layerId: string, fn: (layer: PianoLayer) => PianoLayer): Song {
+  if (!song.piano.layers.some((l) => l.id === layerId)) return song;
+  return {
+    ...song,
+    piano: { ...song.piano, layers: song.piano.layers.map((l) => (l.id === layerId ? fn(l) : l)) },
+  };
+}
+
+/** Apply the same change to whichever instrument's layer has this id. */
+export function updateAnyLayer(song: Song, layerId: string, fn: <L extends AnyLayer>(layer: L) => L): Song {
+  if (song.piano.layers.some((l) => l.id === layerId)) return updatePianoLayer(song, layerId, fn);
+  return updateLayer(song, layerId, fn);
+}
+
+/** Append a new layer to the instrument it belongs to. */
+export function appendLayer(song: Song, layer: AnyLayer): Song {
+  if (layer.type === 'piano') return { ...song, piano: { ...song.piano, layers: [...song.piano.layers, layer] } };
+  return { ...song, guitar: { ...song.guitar, layers: [...song.guitar.layers, layer] } };
+}
+
+export function removeLayer(song: Song, layerId: string): Song {
+  return {
+    ...song,
+    guitar: { ...song.guitar, layers: song.guitar.layers.filter((l) => l.id !== layerId) },
+    piano: { ...song.piano, layers: song.piano.layers.filter((l) => l.id !== layerId) },
+  };
+}
+
+export function toggleLayerMute(song: Song, layerId: string): Song {
+  return updateAnyLayer(song, layerId, (l) => ({ ...l, muted: !l.muted }));
+}
+
 function sortEvents<T extends AnyEvent>(events: T[]): T[] {
   return [...events].sort((a, b) => a.start - b.start);
 }
 
 export function addEvent(song: Song, layerId: string, event: AnyEvent): Song {
+  if (event.kind === 'piano') {
+    return updatePianoLayer(song, layerId, (layer) => ({ ...layer, events: sortEvents([...layer.events, event]) }));
+  }
   return updateLayer(song, layerId, (layer) => {
     if (layer.type === 'single' && event.kind === 'note') {
       return { ...layer, events: sortEvents([...layer.events, event]) };
@@ -215,17 +266,22 @@ export function addEvent(song: Song, layerId: string, event: AnyEvent): Song {
   });
 }
 
+/**
+ * Change one event in any instrument's layer. Only the shared EventBase
+ * fields (start / duration / velocity) are instrument-agnostic; callers that
+ * change anything else must keep the event's kind.
+ */
 export function updateEvent(song: Song, layerId: string, eventId: string, fn: (e: AnyEvent) => AnyEvent): Song {
-  return updateLayer(song, layerId, (layer) => {
-    const events = sortEvents(layer.events.map((e) => (e.id === eventId ? fn(e) : e)));
-    return { ...layer, events } as GuitarLayer;
+  return updateAnyLayer(song, layerId, (layer) => {
+    const events = sortEvents((layer.events as AnyEvent[]).map((e) => (e.id === eventId ? fn(e) : e)));
+    return { ...layer, events };
   });
 }
 
 export function removeEvent(song: Song, layerId: string, eventId: string): Song {
-  return updateLayer(song, layerId, (layer) => {
-    const events = layer.events.filter((e) => e.id !== eventId);
-    return { ...layer, events } as GuitarLayer;
+  return updateAnyLayer(song, layerId, (layer) => {
+    const events = (layer.events as AnyEvent[]).filter((e) => e.id !== eventId);
+    return { ...layer, events };
   });
 }
 
@@ -267,6 +323,13 @@ export function pitchClassHistogram(song: Song): number[] {
       }
     }
   }
+  for (const layer of song.piano.layers) {
+    for (const ev of layer.events) {
+      // Same weighting as guitar chords: the picked root counts fully.
+      hist[ev.root] += ev.duration;
+      for (const midi of ev.notes) hist[pitchClassOf(midi)] += ev.duration * 0.5;
+    }
+  }
   return hist;
 }
 
@@ -279,13 +342,18 @@ export function usedPitchClasses(song: Song): Set<number> {
       else for (const { midi } of soundingNotes(ev.strings)) out.add(pitchClassOf(midi));
     }
   }
+  for (const layer of song.piano.layers) {
+    for (const ev of layer.events) for (const midi of ev.notes) out.add(pitchClassOf(midi));
+  }
   return out;
 }
 
 /**
- * Distinct chords committed across every guitar layer (root + major/minor).
- * Seed notes and hand-edited 'custom' voicings are not chords. The same chord
- * on several layers counts once — "used" is a yes/no.
+ * Distinct chords committed across every guitar and piano layer (root +
+ * major/minor). Guitar seed notes and hand-edited 'custom' voicings are not
+ * chords; a piano chord counts as the standard chord it was built from, even
+ * with extra wheel notes on top. The same chord on several layers counts
+ * once — "used" is a yes/no.
  */
 export function usedChords(song: Song): Triad[] {
   const seen = new Map<string, Triad>();
@@ -293,6 +361,12 @@ export function usedChords(song: Song): Triad[] {
     if (!isChordLayer(layer)) continue;
     for (const ev of layer.events) {
       if (ev.quality !== 'major' && ev.quality !== 'minor') continue;
+      const triad: Triad = { root: ev.root, quality: ev.quality };
+      seen.set(triadId(triad), triad);
+    }
+  }
+  for (const layer of song.piano.layers) {
+    for (const ev of layer.events) {
       const triad: Triad = { root: ev.root, quality: ev.quality };
       seen.set(triadId(triad), triad);
     }

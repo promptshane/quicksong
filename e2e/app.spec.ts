@@ -72,9 +72,10 @@ test('loads with valid PWA metadata at iPhone width', async ({ page }) => {
   const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(scrollWidth).toBeLessThanOrEqual(390);
 
-  // Five instrument rows; only guitar is enabled.
+  // Five instrument rows; guitar and piano are enabled.
   await expect(page.locator('.row')).toHaveCount(5);
-  await expect(page.locator('.row.locked')).toHaveCount(4);
+  await expect(page.locator('.row.locked')).toHaveCount(3);
+  await expect(page.locator('.row[data-instrument="piano"]')).not.toHaveClass(/locked/);
 });
 
 test('song settings: BPM, time signature and key', async ({ page }) => {
@@ -198,7 +199,7 @@ test('locked instruments do not open an editor', async ({ page }) => {
   await page.getByRole('button', { name: 'Drums' }).click({ force: true });
   await expect(page.locator('[data-screen="home"]')).toBeVisible();
   await expect(page.locator('.toast')).toContainText('coming later');
-  await page.getByRole('button', { name: 'Piano' }).click({ force: true });
+  await page.getByRole('button', { name: 'Bass' }).click({ force: true });
   await expect(page.locator('[data-screen="home"]')).toBeVisible();
 });
 
