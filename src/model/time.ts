@@ -115,3 +115,38 @@ export function evenPhraseBars(bars: number): number {
   while (phrase < bars) phrase *= 2;
   return phrase;
 }
+
+export interface LoopRange {
+  start: number;
+  end: number;
+  /** True when the loop is simply the whole song. */
+  whole: boolean;
+}
+
+/**
+ * The part of the song playback loops: the user's loop region clamped to the
+ * song, or the whole song when there is none (or it no longer fits).
+ */
+export function loopRange(song: Song): LoopRange {
+  const total = songBeats(song);
+  const region = song.loopRegion;
+  if (region) {
+    const end = Math.min(region.end, total);
+    const start = Math.max(0, Math.min(region.start, end));
+    const whole = start < 1e-6 && end > total - 1e-6;
+    if (end - start > 1e-6 && !whole) return { start, end, whole: false };
+  }
+  return { start: 0, end: total, whole: true };
+}
+
+/** "bars 2–3", "bar 2", or "2.3–3.1" when the edges are not on bar lines. */
+export function rangeLabel(start: number, end: number, ts: TimeSignature): string {
+  const perBar = ts.beatsPerBar;
+  const onBar = (b: number) => Math.abs(b / perBar - Math.round(b / perBar)) < 1e-6;
+  if (onBar(start) && onBar(end)) {
+    const first = Math.round(start / perBar) + 1;
+    const last = Math.round(end / perBar);
+    return first === last ? `bar ${first}` : `bars ${first}–${last}`;
+  }
+  return `${positionLabel(start, ts)}–${positionLabel(end, ts)}`;
+}

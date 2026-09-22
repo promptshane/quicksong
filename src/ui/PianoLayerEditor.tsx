@@ -275,8 +275,8 @@ export function PianoLayerEditor({ layerId }: { layerId: string }) {
 
   const togglePlay = () => {
     if (transport.isPlaying) transport.stop(cursor);
-    // Play from the cursor to the end, then loop the whole song.
-    else void transport.play(song, cursor, { loop: true, loopFrom: 0 });
+    // Play from the cursor through the loop region, then keep looping it.
+    else void transport.play(song, cursor, { loop: true });
   };
 
   return (

@@ -323,11 +323,22 @@ Persistent layer-editing actions should include:
 - **Hum input**
 - **Manual note input**
 
-Playing from a layer editor plays from the cursor to the end of the song, then **loops the whole song** from bar 1 until paused. Edits, Undo and Redo made while it plays are heard on the next pass without restarting, and the loop follows slots added or removed along the way.
+#### Loop region
 
-The timeline ruler shows the loop length (e.g. **⟲ 4 bars**). Because the timeline is built from whole bars, a loop always lands back on a downbeat in any time signature — no padding is needed. What makes a loop feel even is its phrase length: 1, 2, 4, 8, 16… bars are highlighted; any other length says how many slots would make it even (e.g. *⟲ 3 bars · +1 for an even 4*). Irregular lengths remain fully allowed; nothing is added automatically.
+Playback loops the song's **loop region**, shown as a **golden bar** in the timeline ruler (as in GarageBand). By default it covers the whole song and follows slots being added or removed.
 
-Moving an event takes a deliberate selection first: tap a note/chord to select it, then drag the selected one to move it. Swiping across unselected events scrolls the timeline, so rewinding or fast-forwarding never moves anything by accident.
+- Tap the golden bar to select it; drag its ends to shrink/extend it, or its middle to move it. Edges snap to bars, or to beats when zoomed in far enough. **Whole song** resets it. Tap elsewhere to deselect. Unselected, a swipe over it scrolls like the rest of the timeline.
+- Outside a custom region the lane is dimmed, and Song Home / the layer pages show the region as a gold line along the top of each strip.
+- The loop region is saved with the song; changing it is undoable (one drag = one step).
+- Playing from a layer editor starts at the cursor (or at the region's start if the cursor is outside it), plays to the region's end, then keeps looping the region until paused. Song Home's Play loops the region too. Edits, Undo and Redo made while it plays are heard on the next pass without restarting, and the loop follows region changes live.
+
+The ruler shows the loop's length (e.g. **⟲ 4 bars**). Because the timeline is built from whole bars, a whole-bar loop always lands back on a downbeat in any time signature — no padding is needed. What makes a loop feel even is its phrase length: 1, 2, 4, 8, 16… bars are highlighted; for the whole-song loop, any other length says how many slots would make it even (e.g. *⟲ 3 bars · +1 for an even 4*). Irregular lengths remain fully allowed; nothing is added automatically.
+
+#### Zoom
+
+Pinch the timeline to zoom in and out around your fingers (ctrl + scroll / trackpad pinch on desktop). Zooming in shows beat and then eighth-note grid lines and makes edits finer to aim; the grid itself stays eighth notes. The zoom level is kept while moving between layers.
+
+Moving or resizing an event takes a deliberate selection first: tap a note/chord to select it, then drag the selected one to move it. A selected note/chord also shows **grips on its start and end**: drag the start grip to change where it begins (its end stays put), or the end grip to lengthen/shorten it. Grips snap to the eighth-note grid, never go shorter than an eighth, play the result on release, and one drag is one Undo step. Swiping across unselected events scrolls the timeline, so rewinding or fast-forwarding never moves anything by accident.
 
 Event deletion should stay out of the persistent editing controls. Holding an existing timeline note/chord should reveal a contextual **Delete** action. A separate persistent **Done** button is unnecessary; tapping elsewhere can dismiss/change selection naturally.
 

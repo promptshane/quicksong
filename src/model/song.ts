@@ -2,7 +2,7 @@ import { addToneToVoicing, defaultVoicing, relabelChord, singleNoteVoicing, soun
 import { newId } from './ids';
 import { candidateKeys, isPlausibleKey, keyTonality, relativeKey, resolveAssumedKey, sameKey, triadId, type Triad } from './keys';
 import { pitchClassOf } from './music';
-import { DEFAULT_TIME_SIGNATURE, eighthsPerBar } from './time';
+import { DEFAULT_TIME_SIGNATURE, eighthsPerBar, songBeats } from './time';
 import type {
   AnyEvent,
   AnyLayer,
@@ -386,6 +386,19 @@ export function eventRootPitchClass(event: AnyEvent): PitchClass {
 /** The key the song is currently read in (manual, or Auto's assumption); null before any evidence. */
 export function assumedKey(song: Song): MusicalKey | null {
   return resolveAssumedKey(song.key, usedPitchClasses(song), pitchClassHistogram(song)).assumed;
+}
+
+/**
+ * Set the loop region (beats). It is kept inside the song; covering the whole
+ * song clears it, so the loop goes back to following the song's length.
+ */
+export function setLoopRegion(song: Song, start: number, end: number): Song {
+  const total = songBeats(song);
+  const s = Math.max(0, Math.min(start, total));
+  const e = Math.max(s, Math.min(end, total));
+  const { loopRegion: _old, ...rest } = song;
+  if (e - s < 1e-6 || (s < 1e-6 && e > total - 1e-6)) return rest;
+  return { ...rest, loopRegion: { start: s, end: e } };
 }
 
 // ---- key setting ----------------------------------------------------------

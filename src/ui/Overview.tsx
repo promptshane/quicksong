@@ -1,5 +1,5 @@
 import { useTransport } from '../audio/transport';
-import { songBars, songBeats } from '../model/time';
+import { loopRange, songBars, songBeats } from '../model/time';
 import { scaleDegree } from '../model/keys';
 import { eventRootPitchClass } from '../model/song';
 import type { AnyLayer, MusicalKey, Song } from '../model/types';
@@ -25,6 +25,7 @@ export function Overview({ song, layer, showPlayhead = true, hits = false, color
   const playing = useTransport((s) => s.playing);
   const cursor = useStore((s) => s.cursorBeat);
   const pct = (beat: number) => `${(beat / total) * 100}%`;
+  const loop = loopRange(song);
 
   return (
     <div className="overview" data-layer-id={layer.id}>
@@ -49,6 +50,10 @@ export function Overview({ song, layer, showPlayhead = true, hits = false, color
           </div>
         );
       })}
+      {/* A custom loop region shows as a gold line along the top. */}
+      {!loop.whole && (
+        <div className="overview-loop" style={{ left: pct(loop.start), width: pct(loop.end - loop.start) }} data-testid="overview-loop" />
+      )}
       {showPlayhead && <div className="cursor" style={{ left: pct(cursor) }} />}
       {showPlayhead && playing && <div className="playhead" style={{ left: pct(playhead) }} />}
     </div>

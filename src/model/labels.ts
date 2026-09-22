@@ -1,7 +1,7 @@
 import { chordName, keyLabel, midiToName } from './music';
 import { pianoChordName } from './piano';
 import { allLayers } from './song';
-import { timeSignatureLabel } from './time';
+import { loopRange, rangeLabel, timeSignatureLabel } from './time';
 import type { AnyEvent, AnyLayer, Song } from './types';
 
 /** Short name for an event as the user sees it: "C3", "Am", "Dmaj7". */
@@ -30,6 +30,11 @@ export function describeChange(before: Song, after: Song): string {
     return `Time signature ${timeSignatureLabel(before.timeSignature)} → ${timeSignatureLabel(after.timeSignature)}`;
   }
   if (!sameJson(before.key, after.key)) return `Key → ${keyLabel(after.key, null)}`;
+  if (!sameJson(before.loopRegion, after.loopRegion)) {
+    const loop = loopRange(after);
+    if (loop.whole) return 'Loop · whole song';
+    return `Loop ${rangeLabel(loop.start, loop.end, after.timeSignature)}`;
+  }
 
   const beforeLayers = allLayers(before);
   const afterLayers = allLayers(after);

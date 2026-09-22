@@ -14,6 +14,7 @@ import {
   findPianoLayer,
   isChordLayer,
   removeEvent,
+  setLoopRegion,
   updateEvent,
   updateLayer,
   updatePianoLayer,
@@ -208,6 +209,28 @@ export function changeEventDuration(layerId: string, eventId: string, deltaBeats
   const { commit, song } = useStore.getState();
   const min = eighthBeats(song.timeSignature);
   commit((s) => updateEvent(s, layerId, eventId, (e) => ({ ...e, duration: Math.max(min, e.duration + deltaBeats) })));
+}
+
+/**
+ * Set where an event starts and how long it lasts in one step — the edge
+ * handles on a selected block. Kept on the eighth-note grid, at least one
+ * eighth long and never before the song start. `coalesceKey` makes one drag
+ * one Undo step.
+ */
+export function resizeEvent(layerId: string, eventId: string, start: number, duration: number, coalesceKey?: string): void {
+  const { commit, song } = useStore.getState();
+  const step = eighthBeats(song.timeSignature);
+  const s = Math.max(0, snapToEighth(start, song.timeSignature));
+  const d = Math.max(step, snapToEighth(duration, song.timeSignature));
+  commit(
+    (so) => updateEvent(so, layerId, eventId, (e) => (e.start === s && e.duration === d ? e : { ...e, start: s, duration: d })),
+    coalesceKey,
+  );
+}
+
+/** Set the song's loop region (beats); covering the whole song clears it. */
+export function setSongLoop(start: number, end: number, coalesceKey?: string): void {
+  useStore.getState().commit((s) => setLoopRegion(s, start, end), coalesceKey);
 }
 
 export function moveEvent(layerId: string, eventId: string, newStart: number): void {

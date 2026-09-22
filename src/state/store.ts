@@ -32,6 +32,11 @@ export type View =
 
 const HISTORY_LIMIT = 200;
 
+/** Timeline zoom limits, in pixels per bar (default fits about a bar and a half on an iPhone). */
+export const DEFAULT_TIMELINE_ZOOM = 224;
+export const MIN_TIMELINE_ZOOM = 56;
+export const MAX_TIMELINE_ZOOM = 1344;
+
 interface StoreState {
   /** Every saved project, most recently updated first. Never includes song data. */
   projects: ProjectMeta[];
@@ -48,6 +53,8 @@ interface StoreState {
   cursorBeat: number;
   /** MIDI number of the keyboard's lowest key (48 = C3). */
   keyboardBase: number;
+  /** Timeline zoom: pixels per bar in the layer editors. Session-only, shared by all editors. */
+  timelineZoom: number;
   /**
    * Layer-input Record state. OFF = keyboard and humming only preview;
    * ON = they commit events. Session-only: resets whenever the view changes
@@ -77,6 +84,7 @@ interface StoreState {
   select: (eventId: string | null) => void;
   setCursor: (beat: number) => void;
   setKeyboardBase: (midi: number) => void;
+  setTimelineZoom: (pxPerBar: number) => void;
   setRecording: (on: boolean) => void;
 
   /** Flush the current project's pending save, then load another one. */
@@ -138,6 +146,7 @@ export const useStore = create<StoreState>((set, get) => ({
   selectedEventId: null,
   cursorBeat: 0,
   keyboardBase: 48,
+  timelineZoom: DEFAULT_TIMELINE_ZOOM,
   recording: false,
   lastCommitKey: null,
 
@@ -184,6 +193,8 @@ export const useStore = create<StoreState>((set, get) => ({
   select: (selectedEventId) => set({ selectedEventId, lastCommitKey: null }),
   setCursor: (cursorBeat) => set({ cursorBeat: clampCursor(cursorBeat, get().song) }),
   setKeyboardBase: (keyboardBase) => set({ keyboardBase }),
+  setTimelineZoom: (pxPerBar) =>
+    set({ timelineZoom: Math.max(MIN_TIMELINE_ZOOM, Math.min(MAX_TIMELINE_ZOOM, pxPerBar)) }),
   setRecording: (recording) => set({ recording }),
 
   openProject: async (id) => {

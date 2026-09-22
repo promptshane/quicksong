@@ -115,3 +115,25 @@ describe('transport', () => {
     expect(hitsOf(60)).toEqual([]);
   });
 });
+
+describe('transport and the loop region', () => {
+  it('loops only the region, starting there when played from outside it', async () => {
+    let { song: s, layerId } = song();
+    s = addEvent({ ...s, timelineBars: 2 }, layerId, { ...createPianoChord(2, 'minor', 4, 1), id: 'dm' }); // F4 = 65 at beat 4
+    s = { ...s, loopRegion: { start: 4, end: 8 } }; // bar 2 only
+    await transport.play(s, 0, { loop: true });
+    runUntil(4.5);
+    expect(hitsOf(65)).toEqual([0.05, 2.05, 4.05]); // bar 2, every 2 s
+    expect(hitsOf(60)).toEqual([]); // bar 1 never plays
+  });
+
+  it('follows the region being changed while playing', async () => {
+    const { song: s } = song();
+    const looped = { ...s, timelineBars: 2 };
+    await transport.play(looped, 0, { loop: true });
+    runUntil(0.5);
+    transport.refresh({ ...looped, loopRegion: { start: 0, end: 4 } }); // now just bar 1
+    runUntil(4.5);
+    expect(hitsOf(60)).toEqual([0.05, 2.05, 4.05]);
+  });
+});

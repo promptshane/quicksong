@@ -858,14 +858,17 @@ input[type='range'] {
 }
 .timeline-inner {
   position: relative;
-  height: 112px;
+  height: 130px;
+  /* Room for the grips on anything starting at bar 1. */
+  margin-left: 14px;
 }
+/* Bar numbers on top, the golden loop bar below them. */
 .ruler {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 22px;
+  height: 40px;
   border-bottom: 1px solid var(--line);
 }
 .ruler .bar-label {
@@ -877,11 +880,14 @@ input[type='range'] {
 }
 .grid-line {
   position: absolute;
-  top: 22px;
+  top: 40px;
   bottom: 0;
   width: 1px;
   background: var(--line);
   opacity: 0.5;
+}
+.grid-line.eighth {
+  opacity: 0.22;
 }
 .grid-line.bar {
   top: 0;
@@ -889,7 +895,7 @@ input[type='range'] {
 }
 .lane {
   position: absolute;
-  top: 22px;
+  top: 40px;
   left: 0;
   right: 0;
   bottom: 0;
@@ -1450,7 +1456,7 @@ input[type='range'] {
 
 .add-slot {
   position: absolute;
-  top: 34px;
+  top: 52px;
   width: 66px;
   height: 58px;
   border: 1px dashed var(--line);
@@ -1687,4 +1693,98 @@ input[type='range'] {
 }
 .loop-badge.even {
   color: var(--accent);
+}
+
+/* ---- loop region (golden bar in the ruler) ------------------------------ */
+
+.loop-bar {
+  position: absolute;
+  top: 21px;
+  height: 14px;
+  border-radius: 5px;
+  background: #eab308;
+  opacity: 0.9;
+  touch-action: pan-x;
+  z-index: 2;
+}
+/* A bigger invisible target than the thin bar itself. */
+.loop-bar::after {
+  content: '';
+  position: absolute;
+  inset: -8px 0 -6px;
+}
+.loop-bar.whole {
+  opacity: 0.65;
+}
+.loop-bar.selected {
+  opacity: 1;
+  box-shadow: 0 0 0 2px #fff;
+  touch-action: none;
+}
+.loop-edge,
+.edge-handle {
+  position: absolute;
+  width: 30px;
+  margin-left: -15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  z-index: 4;
+}
+.loop-edge {
+  top: 12px;
+  height: 32px;
+}
+.loop-edge span {
+  width: 8px;
+  height: 22px;
+  border-radius: 3px;
+  background: #fff;
+  box-shadow: 0 0 0 2px #eab308;
+}
+.loop-reset {
+  position: absolute;
+  top: 17px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--bg-3);
+  color: #eab308;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  z-index: 3;
+}
+/* Lane outside a custom loop region is dimmed. */
+.loop-shade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.38);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ---- edge handles on the selected block --------------------------------- */
+
+.edge-handle {
+  top: 10px;
+  height: 66px;
+}
+.edge-handle span {
+  width: 6px;
+  height: 32px;
+  border-radius: 3px;
+  background: #fff;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.overview-loop {
+  position: absolute;
+  top: 0;
+  height: 3px;
+  background: #eab308;
+  border-radius: 0 0 2px 2px;
+  pointer-events: none;
+  z-index: 2;
 }

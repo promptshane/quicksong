@@ -321,3 +321,103 @@ test('Undo on Song Home: a whole tempo adjustment is one step, and says what it 
   await expect(page.getByRole('button', { name: 'BPM' })).toContainText('103');
   await expect(page.locator('.toast')).toHaveText('Redo: Tempo 100 → 103');
 });
+
+/** Drag an element horizontally with a synthetic touch pointer. */
+async function dragBy(page: Page, testId: string, dx: number) {
+  const el = page.getByTestId(testId);
+  const box = (await el.boundingBox())!;
+  const from = { pointerId: 7, pointerType: 'touch', clientX: box.x + box.width / 2, clientY: box.y + box.height / 2 };
+  await el.dispatchEvent('pointerdown', from);
+  await el.dispatchEvent('pointermove', { ...from, clientX: from.clientX + dx / 2 });
+  await el.dispatchEvent('pointermove', { ...from, clientX: from.clientX + dx });
+  await el.dispatchEvent('pointerup', { ...from, clientX: from.clientX + dx });
+}
+
+test('edge handles on a selected hit change where it starts and ends (piano and guitar)', async ({ page }) => {
+  await openNewPianoLayer(page);
+  await expect(page.getByTestId('edge-end')).toHaveCount(0);
+  await addChord(page, 'C'); // selected, beats 0–4
+  const block = page.locator('.block.piano');
+
+  // Default zoom: one beat = 56 px.
+  await dragBy(page, 'edge-end', -56);
+  await expect(page.getByTestId('piano-sustain-value')).toHaveText('3 beats');
+  await page.getByTestId('undo').click(); // the whole drag is one step
+  await expect(page.getByTestId('piano-sustain-value')).toHaveText('1 bar');
+
+  await dragBy(page, 'edge-start', 112);
+  await expect(block).toHaveCSS('left', '112px');
+  await expect(page.getByTestId('piano-sustain-value')).toHaveText('2 beats'); // the end stayed put
+
+  // Guitar notes get the same grips.
+  await page.getByRole('button', { name: 'Back to piano' }).click();
+  await page.getByRole('button', { name: 'Back to song' }).click();
+  await page.getByRole('button', { name: 'Guitar' }).click();
+  await page.getByTestId('add-layer').click();
+  await page.locator('[data-layer-type="single"]').click();
+  await page.getByTestId('record').click();
+  await page.locator('.key[data-midi="48"]').dispatchEvent('pointerdown'); // a 1-beat note, selected
+  await dragBy(page, 'edge-end', 56);
+  await expect(page.getByTestId('note-panel')).toContainText('2 beats');
+});
+
+test('the golden loop region: select, resize, reset — and Play loops only it', async ({ page }) => {
+  await openNewPianoLayer(page);
+  await addChord(page, 'C');
+  await page.getByTestId('next-piano-chord').click();
+  await addChord(page, 'G');
+  await page.locator('.timeline-inner').click({ position: { x: 120, y: 110 } }); // deselect
+  await expect(page.getByTestId('loop-badge')).toHaveText('⟲ 2 bars');
+
+  const loopBar = page.getByTestId('loop-bar');
+  await expect(loopBar).toHaveClass(/whole/);
+  await loopBar.click({ position: { x: 30, y: 7 } });
+  await expect(loopBar).toHaveAttribute('aria-pressed', 'true');
+  await dragBy(page, 'loop-end', -224); // one bar at default zoom (snaps to bars)
+  await expect(page.getByTestId('loop-badge')).toHaveText('⟲ 1 bar');
+  await expect(page.locator('.loop-shade')).toHaveCount(2);
+  await expect(page.locator('.toast')).toHaveCount(0);
+
+  await page.getByTestId('undo').click();
+  await expect(page.locator('.toast')).toHaveText('Undo: Loop bar 1');
+  await expect(page.getByTestId('loop-badge')).toHaveText('⟲ 2 bars');
+  await page.getByTestId('redo').click();
+  await expect(page.getByTestId('loop-badge')).toHaveText('⟲ 1 bar');
+
+  // Playing loops bar 1 only: the playhead never reaches bar 2.
+  await page.getByTestId('play').click();
+  for (let i = 0; i < 6; i++) {
+    await page.waitForTimeout(400);
+    const left = await page.locator('.timeline .playhead').evaluate((el) => parseFloat((el as HTMLElement).style.left));
+    expect(left).toBeLessThan(224);
+  }
+  await page.getByTestId('play').click();
+
+  // Song Home shows the region on the layer strip.
+  await page.getByRole('button', { name: 'Back to piano' }).click();
+  await page.getByRole('button', { name: 'Back to song' }).click();
+  await expect(page.getByTestId('overview-loop')).toHaveCount(1);
+
+  // Back in the editor, "Whole song" resets it.
+  await page.getByRole('button', { name: 'Piano' }).click();
+  await page.getByTestId('open-layer').click();
+  await page.getByTestId('loop-bar').click({ position: { x: 30, y: 7 } });
+  await page.getByTestId('loop-whole-song').click();
+  await expect(page.getByTestId('loop-badge')).toHaveText('⟲ 2 bars');
+  await expect(page.locator('.loop-shade')).toHaveCount(0);
+});
+
+test('pinch (ctrl + wheel on desktop) zooms the timeline', async ({ page }) => {
+  await openNewPianoLayer(page);
+  await addChord(page, 'C');
+  const block = page.locator('.block.piano');
+  const before = (await block.boundingBox())!.width;
+  await page.getByTestId('timeline').dispatchEvent('wheel', { ctrlKey: true, deltaY: -70, clientX: 60, clientY: 150 });
+  await expect.poll(async () => (await block.boundingBox())!.width).toBeGreaterThan(before * 1.8);
+  // Zoomed in far enough, the loop snaps to beats: pull its end in by one beat.
+  await page.locator('.timeline-inner').click({ position: { x: 20, y: 110 } });
+  await page.getByTestId('loop-bar').click({ position: { x: 30, y: 7 } });
+  const pxPerBeat = (await block.boundingBox())!.width / 4;
+  await dragBy(page, 'loop-end', -pxPerBeat);
+  await expect(page.getByTestId('loop-badge')).toHaveText('⟲ 3 beats');
+});

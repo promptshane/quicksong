@@ -8,15 +8,17 @@ import {
 import { useTransport } from '../audio/transport';
 import { eventLabel } from '../model/labels';
 import { eventRootPitchClass } from '../model/song';
-import { eighthBeats, evenPhraseBars, snapToEighth, songBars, songBeats } from '../model/time';
+import { eighthBeats, evenPhraseBars, loopRange, snapToEighth, songBars, songBeats } from '../model/time';
 import type { AnyEvent, AnyLayer, MusicalKey, PianoEvent, Song } from '../model/types';
 import { addTimelineSlot, deleteEvent, moveEvent } from '../state/actions';
 import { useStore } from '../state/store';
 import { toneColor, toneStyle } from './degreeColor';
+import { EdgeHandles } from './EdgeHandles';
 import { HitShape } from './HitShape';
+import { LoopBar } from './LoopBar';
 import { Sheet } from './Sheet';
+import { isPinching, useTimelineZoom } from './useTimelineZoom';
 
-const PX_PER_BAR = 224;
 const ADD_SLOT_WIDTH = 82;
 const DRAG_THRESHOLD_PX = 6;
 const LONG_PRESS_MS = 550;
@@ -38,12 +40,28 @@ function PianoStrike({ event }: { event: PianoEvent }) {
   );
 }
 
+/** Loop length for the ruler badge: "⟲ 4 bars", with a hint when it is not an even phrase. */
+function loopBadgeText(song: Song): { text: string; even: boolean } {
+  const range = loopRange(song);
+  const perBar = song.timeSignature.beatsPerBar;
+  const beats = range.end - range.start;
+  const bars = beats / perBar;
+  if (Math.abs(bars - Math.round(bars)) > 1e-6) return { text: `⟲ ${beats} beats`, even: false };
+  const whole = Math.round(bars);
+  const even = evenPhraseBars(whole);
+  const label = `⟲ ${whole} bar${whole === 1 ? '' : 's'}`;
+  if (even === whole) return { text: label, even: true };
+  // Only the whole-song loop grows by adding slots.
+  return { text: range.whole ? `${label} · +${even - whole} for an even ${even}` : label, even: false };
+}
+
 /**
- * Zoomed, horizontally scrollable timeline for one layer. Tap empty space to
+ * Zoomable, horizontally scrollable timeline for one layer. Tap empty space to
  * set the cursor; tap a block to select it; drag the *selected* block to move
- * it; hold a block to reveal deletion. Swiping across unselected blocks
- * scrolls the timeline (CSS `touch-action: pan-x`), so moving something
- * always takes a deliberate tap first.
+ * it, or its edge handles to change where it starts and ends; hold a block to
+ * reveal deletion. Swiping across unselected blocks scrolls the timeline (CSS
+ * `touch-action: pan-x`), so changing something always takes a deliberate tap
+ * first. Pinch to zoom. The golden bar in the ruler is the loop region.
  */
 export function Timeline({ song, layer, colorKey = null }: TimelineProps) {
   const selectedId = useStore((s) => s.selectedEventId);
@@ -53,31 +71,42 @@ export function Timeline({ song, layer, colorKey = null }: TimelineProps) {
   const playhead = useTransport((s) => s.playheadBeat);
   const playing = useTransport((s) => s.playing);
   const [deleteTarget, setDeleteTarget] = useState<AnyEvent | null>(null);
+  const [loopPicked, setLoopSelected] = useState(false);
 
   const ts = song.timeSignature;
-  const pxPerBeat = PX_PER_BAR / ts.beatsPerBar;
-  const bars = songBars(song);
-  const totalBeats = songBeats(song);
-  const contentWidth = bars * PX_PER_BAR;
-  const evenBars = evenPhraseBars(bars);
-  const loopIsEven = evenBars === bars;
-  const width = contentWidth + ADD_SLOT_WIDTH;
-  const step = eighthBeats(ts);
   const innerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const pxPerBar = useTimelineZoom(scrollRef, ts.beatsPerBar);
+  const pxPerBeat = pxPerBar / ts.beatsPerBar;
+  const bars = songBars(song);
+  const totalBeats = songBeats(song);
+  const contentWidth = bars * pxPerBar;
+  const badge = loopBadgeText(song);
+  const loop = loopRange(song);
+  const width = contentWidth + ADD_SLOT_WIDTH;
+  const step = eighthBeats(ts);
+  const selected = (layer.events as AnyEvent[]).find((e) => e.id === selectedId) ?? null;
 
-  // Keep the cursor (or the playhead while playing) in view.
+  // Selecting a block and selecting the loop are exclusive.
+  const loopSelected = loopPicked && selectedId === null;
+
+  // Keep the cursor (or the playhead while playing) in view. Zooming alone
+  // does not re-follow: the pinch keeps its own point steady.
   const followBeat = playing ? playhead : cursor;
+  const pxPerBeatRef = useRef(pxPerBeat);
+  useEffect(() => {
+    pxPerBeatRef.current = pxPerBeat;
+  }, [pxPerBeat]);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const x = followBeat * pxPerBeat;
+    const x = followBeat * pxPerBeatRef.current;
     const left = el.scrollLeft;
     const viewportWidth = el.clientWidth;
     if (x < left + 16 || x > left + viewportWidth - 48) {
       el.scrollTo({ left: Math.max(0, x - viewportWidth * 0.25), behavior: playing ? 'auto' : 'smooth' });
     }
-  }, [followBeat, pxPerBeat, playing]);
+  }, [followBeat, playing]);
 
   const beatAtClientX = (clientX: number) => {
     const rect = innerRef.current?.getBoundingClientRect();
@@ -86,10 +115,11 @@ export function Timeline({ song, layer, colorKey = null }: TimelineProps) {
   };
 
   const onLaneClick = (e: ReactMouseEvent) => {
-    if ((e.target as HTMLElement).closest('.block, .add-slot')) return;
+    if ((e.target as HTMLElement).closest('.block, .add-slot, .edge-handle, .loop-bar, .loop-edge, .loop-reset')) return;
     const beat = snapToEighth(beatAtClientX(e.clientX), ts);
     setCursor(Math.min(beat, totalBeats - step));
     select(null);
+    setLoopSelected(false);
   };
 
   const drag = useRef<{
@@ -142,6 +172,10 @@ export function Timeline({ song, layer, colorKey = null }: TimelineProps) {
   const onBlockPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     if (!d || d.longPressed) return;
+    if (isPinching()) {
+      onBlockPointerCancel();
+      return;
+    }
     const dx = e.clientX - d.startX;
     if (!d.moved && Math.abs(dx) < DRAG_THRESHOLD_PX) return;
     clearLongPressTimer();
@@ -165,6 +199,7 @@ export function Timeline({ song, layer, colorKey = null }: TimelineProps) {
     } else {
       select(d.id);
       setCursor(d.startBeat);
+      setLoopSelected(false);
     }
   };
 
@@ -176,12 +211,16 @@ export function Timeline({ song, layer, colorKey = null }: TimelineProps) {
     if (d?.draggable) d.el.style.left = '';
   };
 
+  // Denser grid the further in you zoom: bars only, then beats, then eighths.
   const gridLines = [];
   for (let b = 0; b < totalBeats; b += step) {
     const isBar = Math.abs(b % ts.beatsPerBar) < 1e-6;
     const isBeat = Math.abs(b % 1) < 1e-6;
-    if (!isBar && !isBeat) continue;
-    gridLines.push(<div key={b} className={`grid-line ${isBar ? 'bar' : ''}`} style={{ left: b * pxPerBeat }} />);
+    const visible = isBar || (isBeat && pxPerBeat >= 24) || pxPerBeat * step >= 40;
+    if (!visible) continue;
+    gridLines.push(
+      <div key={b} className={`grid-line ${isBar ? 'bar' : isBeat ? '' : 'eighth'}`} style={{ left: b * pxPerBeat }} />,
+    );
   }
 
   return (
@@ -190,18 +229,33 @@ export function Timeline({ song, layer, colorKey = null }: TimelineProps) {
         <div className="timeline-inner" ref={innerRef} style={{ width, minWidth: '100%' }} onClick={onLaneClick}>
           <div className="ruler" style={{ width: contentWidth, right: 'auto' }}>
             {Array.from({ length: bars }, (_, i) => (
-              <span key={i} className="bar-label" style={{ left: i * PX_PER_BAR }}>
+              <span key={i} className="bar-label" style={{ left: i * pxPerBar }}>
                 {i + 1}
               </span>
             ))}
-            {/* Playback loops these bars; an even phrase (1, 2, 4, 8…) loops most naturally. */}
-            <span className={`loop-badge ${loopIsEven ? 'even' : ''}`} data-testid="loop-badge">
-              ⟲ {bars} bar{bars === 1 ? '' : 's'}
-              {!loopIsEven && ` · +${evenBars - bars} for an even ${evenBars}`}
+            {/* Playback loops the region; an even phrase (1, 2, 4, 8…) loops most naturally. */}
+            <span className={`loop-badge ${badge.even ? 'even' : ''}`} data-testid="loop-badge">
+              {badge.text}
             </span>
+            <LoopBar
+              song={song}
+              pxPerBeat={pxPerBeat}
+              selected={loopSelected}
+              onSelect={(on) => {
+                setLoopSelected(on);
+                if (on) select(null);
+              }}
+            />
           </div>
           {gridLines}
           <div className="lane" style={{ width: contentWidth, right: 'auto' }}>
+            {/* Outside a custom loop region the lane is shaded. */}
+            {!loop.whole && (
+              <>
+                <div className="loop-shade" style={{ left: 0, width: loop.start * pxPerBeat }} />
+                <div className="loop-shade" style={{ left: loop.end * pxPerBeat, right: 0 }} />
+              </>
+            )}
             {(layer.events as AnyEvent[]).map((ev) => {
               const tone = toneColor(eventRootPitchClass(ev), colorKey);
               return (
@@ -224,6 +278,7 @@ export function Timeline({ song, layer, colorKey = null }: TimelineProps) {
                 </div>
               );
             })}
+            {selected && <EdgeHandles key={selected.id} layerId={layer.id} event={selected} pxPerBeat={pxPerBeat} timeSignature={ts} />}
           </div>
           <div className="cursor" style={{ left: cursor * pxPerBeat }} />
           {playing && <div className="playhead" style={{ left: playhead * pxPerBeat }} />}

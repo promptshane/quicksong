@@ -174,6 +174,11 @@ export interface Song {
   key: KeySetting;
   /** Number of timeline bar-slots the user has explicitly created. */
   timelineBars: number;
+  /**
+   * The loop region, in beats [start, end). Absent = the whole song, which
+   * then follows slots being added or removed.
+   */
+  loopRegion?: { start: number; end: number };
   guitar: {
     layers: GuitarLayer[];
   };

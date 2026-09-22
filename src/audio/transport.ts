@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { beatsToSeconds, isDownbeat, songBeats } from '../model/time';
+import { beatsToSeconds, isDownbeat, loopRange, songBeats } from '../model/time';
 import type { Song } from '../model/types';
 import { getAudioEngine } from './engine';
 import { passBeat, songBeatAt, type LoopSpan } from './loop';
@@ -37,8 +37,11 @@ class Transport {
   private loop = false;
   private loopFrom = 0;
   private endBeat = 0;
-  /** True when the end is the song's own end, so it follows added/removed slots. */
-  private followSongEnd = false;
+  /**
+   * True when the loop is the song's own loop region (whole song by default),
+   * so it follows region edits and added/removed slots while playing.
+   */
+  private followSong = false;
   /** Where the current first pass began (moves when live edits re-anchor). */
   private startBeat = 0;
   /** Where playback was started from; Stop returns here at the end of a one-shot play. */
@@ -102,11 +105,13 @@ class Transport {
 
   /**
    * Start playing `song` from `fromBeat`.
-   * - `opts.endBeat`: where a pass ends (default: the song's end, which then
-   *   follows slots added or removed while playing).
-   * - `opts.loop`: keep going; each later pass replays `opts.loopFrom`
-   *   (default `fromBeat`) to the end, scheduled ahead of the boundary so
-   *   there is no gap.
+   * - `opts.loop` with no `endBeat`: loop the song's loop region (the whole
+   *   song by default), following edits to it while playing. Starting outside
+   *   the region starts at the region.
+   * - `opts.loop` with `endBeat`: loop `opts.loopFrom` (default `fromBeat`)
+   *   to `endBeat` — a fixed span, e.g. a project preview.
+   * - no `opts.loop`: play once to `endBeat` (default the song's end).
+   * Later passes are scheduled ahead of the boundary, so there is no gap.
    * - `opts.metronome`: click on every beat (a hum take).
    */
   async play(
@@ -122,10 +127,17 @@ class Transport {
     this.songId = song.id;
     this.bpm = song.bpm;
     this.beatsPerBar = song.timeSignature.beatsPerBar;
-    this.followSongEnd = opts.endBeat === undefined;
-    this.endBeat = opts.endBeat ?? songBeats(song);
-    this.loopFrom = Math.min(opts.loopFrom ?? fromBeat, fromBeat);
     this.wantLoop = opts.loop === true;
+    this.followSong = this.wantLoop && opts.endBeat === undefined;
+    if (this.followSong) {
+      const range = loopRange(song);
+      this.endBeat = range.end;
+      this.loopFrom = range.start;
+      if (fromBeat < range.start - 1e-6 || fromBeat >= range.end - 1e-6) fromBeat = range.start;
+    } else {
+      this.endBeat = opts.endBeat ?? songBeats(song);
+      this.loopFrom = Math.min(opts.loopFrom ?? fromBeat, fromBeat);
+    }
     this.loop = this.wantLoop && this.endBeat - this.loopFrom > 1e-6;
     this.startBeat = fromBeat;
     this.returnBeat = fromBeat;
@@ -172,7 +184,11 @@ class Transport {
     let wrapped = this.loop && songUntil < songNow - 1e-9;
 
     this.beatsPerBar = song.timeSignature.beatsPerBar;
-    if (this.followSongEnd) this.endBeat = songBeats(song);
+    if (this.followSong) {
+      const range = loopRange(song);
+      this.endBeat = range.end;
+      this.loopFrom = range.start;
+    }
     this.loop = this.wantLoop && this.endBeat - this.loopFrom > 1e-6;
     if (songNow >= this.endBeat - 1e-6 || (wrapped && songUntil >= this.endBeat - 1e-6)) {
       // The song got shorter than where we are.

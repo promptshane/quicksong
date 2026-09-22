@@ -41,6 +41,7 @@ export function isPristineSong(song: Song): boolean {
     song.timeSignature.beatUnit === 4 &&
     defaultKey &&
     song.timelineBars === 1 &&
+    song.loopRegion === undefined &&
     song.guitar.layers.length === 0 &&
     (song.piano?.layers.length ?? 0) === 0
   );
