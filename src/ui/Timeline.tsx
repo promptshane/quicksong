@@ -12,6 +12,7 @@ import { eighthBeats, snapToEighth, songBars, songBeats } from '../model/time';
 import type { AnyEvent, AnyLayer, PianoEvent, Song } from '../model/types';
 import { addTimelineSlot, deleteEvent, moveEvent } from '../state/actions';
 import { useStore } from '../state/store';
+import { HitShape } from './HitShape';
 import { Sheet } from './Sheet';
 
 const PX_PER_BAR = 224;
@@ -30,30 +31,22 @@ function eventLabel(ev: AnyEvent): string {
   return chordName(ev.root, ev.quality);
 }
 
-/**
- * A piano hit drawn as what it is: a vertical strike whose height is the
- * velocity, then a line ramping down across the sustain to the key release.
- */
+/** A piano hit: its name, then the strike and sustain drawn below it. */
 function PianoStrike({ event }: { event: PianoEvent }) {
-  const top = 100 - Math.round(event.velocity * 100);
   return (
     <>
       <span className="piano-label">{eventLabel(event)}</span>
-      <span className="piano-hit" aria-hidden>
-        <svg className="piano-sustain" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <polygon points={`0,${top} 100,100 0,100`} />
-          <line x1="0" y1={top} x2="100" y2="100" vectorEffect="non-scaling-stroke" />
-        </svg>
-        <span className="piano-strike" style={{ height: `${event.velocity * 100}%` }} />
-      </span>
+      <HitShape velocity={event.velocity} className="piano-hit" />
     </>
   );
 }
 
 /**
  * Zoomed, horizontally scrollable timeline for one layer. Tap empty space to
- * set the cursor; tap a block to select it; drag a block to move it; hold a
- * block to reveal deletion.
+ * set the cursor; tap a block to select it; drag the *selected* block to move
+ * it; hold a block to reveal deletion. Swiping across unselected blocks
+ * scrolls the timeline (CSS `touch-action: pan-x`), so moving something
+ * always takes a deliberate tap first.
  */
 export function Timeline({ song, layer }: TimelineProps) {
   const selectedId = useStore((s) => s.selectedEventId);
@@ -105,6 +98,8 @@ export function Timeline({ song, layer }: TimelineProps) {
     startX: number;
     startBeat: number;
     moved: boolean;
+    /** Only the already-selected block can be dragged; others scroll. */
+    draggable: boolean;
     longPressed: boolean;
     timer: ReturnType<typeof setTimeout> | null;
     el: HTMLElement;
@@ -124,6 +119,7 @@ export function Timeline({ song, layer }: TimelineProps) {
       startX: e.clientX,
       startBeat: ev.start,
       moved: false,
+      draggable: ev.id === selectedId,
       longPressed: false,
       timer: null as ReturnType<typeof setTimeout> | null,
       el,
@@ -136,6 +132,7 @@ export function Timeline({ song, layer }: TimelineProps) {
       setDeleteTarget(ev);
     }, LONG_PRESS_MS);
     drag.current = pending;
+    if (!pending.draggable) return;
     try {
       el.setPointerCapture(e.pointerId);
     } catch {
@@ -150,6 +147,7 @@ export function Timeline({ song, layer }: TimelineProps) {
     if (!d.moved && Math.abs(dx) < DRAG_THRESHOLD_PX) return;
     clearLongPressTimer();
     d.moved = true;
+    if (!d.draggable) return; // a swipe across the timeline, not a move
     const beat = Math.max(0, snapToEighth(d.startBeat + dx / pxPerBeat, ts));
     d.el.style.left = `${beat * pxPerBeat}px`;
   };
@@ -160,6 +158,7 @@ export function Timeline({ song, layer }: TimelineProps) {
     drag.current = null;
     if (!d || d.longPressed) return;
     if (d.moved) {
+      if (!d.draggable) return;
       const beat = Math.max(0, snapToEighth(d.startBeat + (e.clientX - d.startX) / pxPerBeat, ts));
       d.el.style.left = '';
       moveEvent(layer.id, d.id, beat);
@@ -170,9 +169,12 @@ export function Timeline({ song, layer }: TimelineProps) {
     }
   };
 
+  // Also fires when the browser takes a swipe over for native scrolling.
   const onBlockPointerCancel = () => {
+    const d = drag.current;
     clearLongPressTimer();
     drag.current = null;
+    if (d?.draggable) d.el.style.left = '';
   };
 
   const gridLines = [];

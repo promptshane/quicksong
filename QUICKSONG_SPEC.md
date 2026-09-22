@@ -12,6 +12,10 @@ The top section defines the shared musical settings for the entire song:
 
 All instrument layers ultimately follow these shared settings.
 
+### Editing Metronome
+
+Tapping **BPM** opens the Tempo sheet, which includes a **Metronome** on/off toggle. While on, a click plays at the song's BPM (accenting the first beat of each bar) the whole time the user is editing the project — across Song Home, instrument and layer screens. While the song is playing, the click follows the playback's own beats so it always lines up with the music. A dot on the BPM chip shows the metronome is on. It is silent on the Projects screen and is a session setting, not saved with the song.
+
 The key may be selected manually, but QuickSong should also be able to infer likely keys progressively from the notes/chords the user creates. A single hummed note is not enough to uniquely determine a key, so confidence should increase as more musical information is added.
 
 For the first UI, **Key can default to Auto** and become more confident as the user adds committed musical material. The user can override it manually at any time.
@@ -291,6 +295,8 @@ A new guitar layer asks the user to choose:
 - **Type 1B — Picked Chord**
 - **Type 2 — Single Notes**
 
+Each layer card in the Guitar and Piano overviews draws its events as hits: a vertical strike whose height is the event's velocity, with a line dropping off across its duration. Song Home keeps compact solid clips.
+
 Existing guitar layers can be duplicated from the Guitar overview with a long-press. The duplicate should preserve the layer's musical content/settings, receive independent IDs, and appear immediately after the source so both layers can play simultaneously.
 
 For chord layers, the layer title in Layer Focus is interactive. The user can switch an existing layer between **Strummed Chords** and **Picked Chords** without recreating or losing its chord events, voicings, positions, durations, velocities, volume, or mute state.
@@ -311,6 +317,8 @@ Persistent layer-editing actions should include:
 - **Record** toggle/state
 - **Hum input**
 - **Manual note input**
+
+Moving an event takes a deliberate selection first: tap a note/chord to select it, then drag the selected one to move it. Swiping across unselected events scrolls the timeline, so rewinding or fast-forwarding never moves anything by accident.
 
 Event deletion should stay out of the persistent editing controls. Holding an existing timeline note/chord should reveal a contextual **Delete** action. A separate persistent **Done** button is unnecessary; tapping elsewhere can dismiss/change selection naturally.
 
@@ -493,7 +501,7 @@ The selected hit has two sliders:
 
 Releasing a slider plays the hit so the change can be heard. One continuous drag is one Undo step.
 
-On the timeline each piano hit is drawn as what it is: horizontal position = timing, a vertical **strike** whose height is the velocity, and a line ramping down to the right across the **sustain**. Hits can be moved by dragging and deleted by holding, as on Guitar.
+On the timeline each piano hit is drawn as what it is: horizontal position = timing, a vertical **strike** whose height is the velocity, and a line ramping down to the right across the **sustain**. As on Guitar, a selected hit can be dragged to move it, swiping over unselected hits scrolls the timeline, and holding a hit deletes it.
 
 Every piano edit — adding, changing, wheel notes, velocity, sustain, moving, deleting — is undoable with Undo/Redo.
 

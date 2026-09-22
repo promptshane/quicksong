@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { setMetronomeOn, useMetronome } from '../audio/metronome';
 import { transport } from '../audio/transport';
 import { buildKeyWheel } from '../model/keyWheel';
 import { keyLabel, keyName } from '../model/music';
@@ -17,6 +18,7 @@ const MAX_BPM = 220;
 export function TopBar() {
   const song = useStore((s) => s.song);
   const commit = useStore((s) => s.commit);
+  const metronomeOn = useMetronome((s) => s.on);
   const [open, setOpen] = useState<Open>(null);
 
   const wheel = useMemo(() => buildKeyWheel(song), [song]);
@@ -35,8 +37,9 @@ export function TopBar() {
   return (
     <>
       <div className="topbar">
-        <button className="chip" onClick={() => setOpen('bpm')} aria-label="BPM">
+        <button className="chip" onClick={() => setOpen('bpm')} aria-label={metronomeOn ? 'BPM, metronome on' : 'BPM'}>
           BPM <b>{song.bpm}</b>
+          {metronomeOn && <span className="metro-dot" data-testid="metronome-indicator" />}
         </button>
         <button className="chip" onClick={() => setOpen('time')} aria-label="Time signature">
           <b>{timeSignatureLabel(song.timeSignature)}</b>
@@ -48,6 +51,15 @@ export function TopBar() {
 
       {open === 'bpm' && (
         <Sheet title="Tempo" onClose={() => setOpen(null)}>
+          <button
+            className={`btn wide metronome-toggle ${metronomeOn ? 'active' : ''}`}
+            onClick={() => setMetronomeOn(!metronomeOn)}
+            aria-pressed={metronomeOn}
+            data-testid="metronome-toggle"
+          >
+            <span className="metro-dot" aria-hidden />
+            Metronome {metronomeOn ? 'on' : 'off'}
+          </button>
           <div className="sheet-row center">
             <button className="btn icon" onClick={() => setBpm(song.bpm - 1)} aria-label="Slower">
               −

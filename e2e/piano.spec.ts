@@ -75,7 +75,7 @@ test('piano: pick chords from the key, add a special note, shape the feel', asyn
   await expect(page.getByTestId('piano-velocity-value')).toHaveText('soft · 35');
   await page.getByTestId('piano-sustain').fill('2');
   await expect(page.getByTestId('piano-sustain-value')).toHaveText('2 beats');
-  const strike = page.locator('.block.piano').nth(1).locator('.piano-strike');
+  const strike = page.locator('.block.piano').nth(1).locator('.hit-strike');
   await expect(strike).toHaveAttribute('style', /height: 35%/);
 
   // Undo walks the edits back one step at a time.
@@ -138,4 +138,66 @@ test('piano: a manual key sets the palette; change chord swaps it in place', asy
   await block.dispatchEvent('pointerup', point);
   await page.getByTestId('context-delete-event').click();
   await expect(page.locator('.block.piano')).toHaveCount(0);
+});
+
+test('timeline: swiping over an unselected hit scrolls; only the selected hit drags', async ({ page }) => {
+  await openNewPianoLayer(page);
+  await addChord(page, 'C');
+  // Tap empty lane space to deselect.
+  await page.locator('.timeline-inner').click({ position: { x: 300, y: 60 } });
+  const block = page.locator('.block.piano');
+  await expect(block).not.toHaveClass(/selected/);
+
+  const drag = async (dx: number) => {
+    const box = (await block.boundingBox())!;
+    const from = { pointerId: 1, pointerType: 'touch', clientX: box.x + 20, clientY: box.y + box.height / 2 };
+    const to = { ...from, clientX: from.clientX + dx };
+    await block.dispatchEvent('pointerdown', from);
+    await block.dispatchEvent('pointermove', { ...from, clientX: from.clientX + dx / 2 });
+    await block.dispatchEvent('pointermove', to);
+    await block.dispatchEvent('pointerup', to);
+  };
+
+  // Unselected: the swipe neither moves nor selects it, and it scrolls natively.
+  await expect(block).toHaveCSS('touch-action', 'pan-x');
+  await drag(112);
+  await expect(block).toHaveCSS('left', '0px');
+  await expect(block).not.toHaveClass(/selected/);
+
+  // Tap to select, then the same drag moves it by two beats.
+  await block.click();
+  await expect(block).toHaveClass(/selected/);
+  await expect(block).toHaveCSS('touch-action', 'none');
+  await drag(112);
+  await expect(block).toHaveCSS('left', '112px');
+  await page.getByTestId('undo').click();
+  await expect(block).toHaveCSS('left', '0px');
+});
+
+test('layer pages draw each hit: strike height = velocity, dropoff = duration', async ({ page }) => {
+  await openNewPianoLayer(page);
+  await addChord(page, 'C');
+  await page.getByTestId('piano-velocity').fill('40');
+  await page.getByRole('button', { name: 'Back to piano' }).click();
+  const pianoHit = page.locator('.layer-card .clip.hit.piano');
+  await expect(pianoHit).toHaveCount(1);
+  await expect(pianoHit.locator('.hit-strike')).toHaveAttribute('style', /height: 40%/);
+  await expect(pianoHit.locator('svg line')).toHaveCount(1);
+
+  // Guitar layers get the same drawing.
+  await page.getByRole('button', { name: 'Back to song' }).click();
+  await page.getByRole('button', { name: 'Guitar' }).click();
+  await page.getByTestId('add-layer').click();
+  await page.locator('[data-layer-type="single"]').click();
+  await page.getByTestId('record').click();
+  await page.locator('.key[data-midi="48"]').dispatchEvent('pointerdown');
+  await page.getByRole('button', { name: 'Back to guitar' }).click();
+  const guitarHit = page.locator('.layer-card .clip.hit.note');
+  await expect(guitarHit).toHaveCount(1);
+  await expect(guitarHit.locator('.hit-strike')).toHaveAttribute('style', /height: 80%/);
+
+  // Song Home keeps its compact solid clips.
+  await page.getByRole('button', { name: 'Back to song' }).click();
+  await expect(page.locator('.rows .clip')).toHaveCount(2);
+  await expect(page.locator('.rows .clip.hit')).toHaveCount(0);
 });

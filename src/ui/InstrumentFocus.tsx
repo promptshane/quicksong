@@ -193,13 +193,8 @@ export function InstrumentFocus({ instrument }: { instrument: InstrumentId }) {
                     ✕
                   </button>
                 </div>
-                <button
-                  className="row-lane"
-                  style={{ minHeight: 22 }}
-                  onClick={() => openLayer(layer.id)}
-                  aria-label={`Open ${layer.name}`}
-                >
-                  <Overview song={song} layer={layer} />
+                <button className="row-lane layer-card-lane" onClick={() => openLayer(layer.id)} aria-label={`Open ${layer.name}`}>
+                  <Overview song={song} layer={layer} hits />
                 </button>
               </div>
             ))}

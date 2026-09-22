@@ -78,6 +78,28 @@ test('loads with valid PWA metadata at iPhone width', async ({ page }) => {
   await expect(page.locator('.row[data-instrument="piano"]')).not.toHaveClass(/locked/);
 });
 
+test('metronome toggles from the Tempo sheet and shows on the BPM chip', async ({ page }) => {
+  await expect(page.getByTestId('metronome-indicator')).toHaveCount(0);
+  await page.getByRole('button', { name: 'BPM' }).click();
+  const toggle = page.getByTestId('metronome-toggle');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(toggle).toHaveText('Metronome on');
+  await page.getByRole('button', { name: 'Faster' }).click();
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByTestId('metronome-indicator')).toBeVisible();
+
+  // Keeps running through editing and playback without errors.
+  await page.getByTestId('play').click();
+  await page.waitForTimeout(400);
+  await page.getByTestId('play').click();
+  await page.getByRole('button', { name: 'BPM, metronome on' }).click();
+  await page.getByTestId('metronome-toggle').click();
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByTestId('metronome-indicator')).toHaveCount(0);
+});
+
 test('song settings: BPM, time signature and key', async ({ page }) => {
   await page.getByRole('button', { name: 'BPM' }).click();
   await page.getByRole('button', { name: 'Faster' }).click();

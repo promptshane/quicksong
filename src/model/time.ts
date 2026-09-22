@@ -96,3 +96,10 @@ export function durationLabel(beats: number, ts: TimeSignature): string {
   }
   return `${Number(beats.toFixed(2))} beat${beats === 1 ? '' : 's'}`;
 }
+
+/** True on the first beat of a bar (tolerant of float drift). */
+export function isDownbeat(beat: number, beatsPerBar: number): boolean {
+  if (beatsPerBar <= 0) return false;
+  const within = ((beat % beatsPerBar) + beatsPerBar) % beatsPerBar;
+  return within < 1e-6 || beatsPerBar - within < 1e-6;
+}

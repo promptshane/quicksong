@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { beatsToSeconds, songBeats } from '../model/time';
+import { beatsToSeconds, isDownbeat, songBeats } from '../model/time';
 import type { Song } from '../model/types';
 import { getAudioEngine } from './engine';
 import { renderSong, type ScheduledNote } from './render';
@@ -38,7 +38,12 @@ class Transport {
   private bpm = 100;
   private endBeat = 0;
   private onEnd: (() => void) | null = null;
-  private metronome: { beatsPerBar: number } | null = null;
+  private beatsPerBar = 4;
+  /** Click requested by this play session (a hum take). */
+  private takeClick = false;
+  /** Click requested by the editing metronome; survives across plays. */
+  private editClick = false;
+  /** Next click, in the same unwrapped beats as `anchorBeat`. */
   private nextClickBeat = 0;
 
   get isPlaying(): boolean {
@@ -108,7 +113,8 @@ class Transport {
     this.loop = opts.loop === true && this.endBeat > this.startBeat;
     this.loopLength = this.endBeat - this.startBeat;
     this.onEnd = opts.onEnd ?? null;
-    this.metronome = opts.metronome ? { beatsPerBar: song.timeSignature.beatsPerBar } : null;
+    this.beatsPerBar = song.timeSignature.beatsPerBar;
+    this.takeClick = opts.metronome === true;
     this.nextClickBeat = Math.ceil(fromBeat - 1e-6);
 
     this.playbackNotes = this.notes.filter((n) => n.beat >= this.startBeat - 1e-6 && n.beat < this.endBeat - 1e-6);
@@ -142,16 +148,27 @@ class Transport {
     useTransport.setState({ playing: false, playheadBeat: resetTo ?? useTransport.getState().playheadBeat });
   }
 
-  /** Turn the click on/off during playback (used by the hum overlay). */
+  private get clicking(): boolean {
+    return this.takeClick || this.editClick;
+  }
+
+  /** Before switching the click on mid-play, start it from the next beat. */
+  private armClick(): void {
+    if (!this.isPlaying || this.clicking) return;
+    this.nextClickBeat = Math.ceil(this.absoluteBeatAt(getAudioEngine().now()) + 0.05);
+  }
+
+  /** Turn the take's click on/off during playback (used by the hum overlay). */
   setMetronome(on: boolean, beatsPerBar: number): void {
-    if (!on) {
-      this.metronome = null;
-      return;
-    }
-    if (!this.metronome) {
-      this.metronome = { beatsPerBar };
-      this.nextClickBeat = Math.ceil(this.currentBeat() + 0.1);
-    }
+    if (on) this.armClick();
+    this.beatsPerBar = beatsPerBar;
+    this.takeClick = on;
+  }
+
+  /** The editing metronome: click on the song's beats whenever playing. */
+  setEditClick(on: boolean): void {
+    if (on) this.armClick();
+    this.editClick = on;
   }
 
   /** AudioContext time for a song beat, given the current play session. */
@@ -197,12 +214,16 @@ class Transport {
       }
     }
 
-    if (this.metronome) {
-      while (this.nextClickBeat < this.endBeat) {
+    if (this.clicking) {
+      // Clicks count unwrapped beats, so a looping song keeps clicking on
+      // every pass; the accent follows the bar position inside the song.
+      while (this.loop || this.nextClickBeat < this.endBeat) {
         const when = this.timeForBeat(this.nextClickBeat);
         if (when > horizon) break;
-        const accent = this.nextClickBeat % this.metronome.beatsPerBar === 0;
-        scheduleClick(ctx, ctx.destination, when, accent);
+        const songBeat = this.loop
+          ? this.startBeat + ((((this.nextClickBeat - this.startBeat) % this.loopLength) + this.loopLength) % this.loopLength)
+          : this.nextClickBeat;
+        scheduleClick(ctx, ctx.destination, when, isDownbeat(songBeat, this.beatsPerBar));
         this.nextClickBeat++;
       }
     }
