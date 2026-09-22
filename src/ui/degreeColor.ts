@@ -12,9 +12,9 @@ export function degreeColor(degree: number | null): string {
   return degree === null ? 'var(--deg-out)' : `var(--deg-${degree})`;
 }
 
-/** Key colour of a pitch class (a chord root or a note); undefined with no key to read it in. */
-export function toneColor(pc: number, key: MusicalKey | null | undefined): string | undefined {
-  return key ? degreeColor(scaleDegree(pc, key)) : undefined;
+/** Key colour of a pitch class (a chord root or a note); undefined with no key, or no pitch (drums). */
+export function toneColor(pc: number | null, key: MusicalKey | null | undefined): string | undefined {
+  return key && pc !== null ? degreeColor(scaleDegree(pc, key)) : undefined;
 }
 
 /** Inline style exposing a key colour to CSS as `--tone`. */

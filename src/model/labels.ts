@@ -1,5 +1,7 @@
 import { chordName, keyLabel, midiToName } from './music';
-import { pianoChordName } from './piano';
+import { drumLabel } from './drums';
+import { guitarChordShape } from './guitarChords';
+import { chordShapeName } from './piano';
 import { allLayers } from './song';
 import { loopRange, rangeLabel, timeSignatureLabel } from './time';
 import type { AnyEvent, AnyLayer, Song } from './types';
@@ -7,8 +9,10 @@ import type { AnyEvent, AnyLayer, Song } from './types';
 /** Short name for an event as the user sees it: "C3", "Am", "Dmaj7". */
 export function eventLabel(ev: AnyEvent): string {
   if (ev.kind === 'note') return midiToName(ev.midi);
-  if (ev.kind === 'piano') return pianoChordName(ev);
-  return chordName(ev.root, ev.quality);
+  if (ev.kind === 'piano') return chordShapeName(ev);
+  if (ev.kind === 'drum') return drumLabel(ev.piece);
+  const shape = guitarChordShape(ev);
+  return shape ? chordShapeName(shape) : chordName(ev.root, ev.quality);
 }
 
 function layerEvents(layer: AnyLayer): AnyEvent[] {

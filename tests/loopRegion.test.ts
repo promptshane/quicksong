@@ -4,10 +4,17 @@ engine.initAudioEngine(() => ({ noteOn() {}, allNotesOff() {} }));
 import { describeChange } from '../src/model/labels';
 import { createPianoLayer } from '../src/model/piano';
 import { isPristineSong } from '../src/model/projects';
-import { appendLayer, createSong, findPianoLayer, isLoopOn, setLoopOn, setLoopRegion } from '../src/model/song';
+import {
+  appendLayer,
+  createSong,
+  findPianoLayer,
+  isLoopOn,
+  setLoopOn,
+  setLoopRegion,
+} from '../src/model/song';
 import { loopRange, rangeLabel } from '../src/model/time';
 import type { Song } from '../src/model/types';
-import { addPianoChord, resizeEvent, setSongLoop } from '../src/state/actions';
+import { addChordAtCursor, resizeEvent, setSongLoop } from '../src/state/actions';
 import { useStore } from '../src/state/store';
 
 const fourBars = (): Song => ({ ...createSong(), timelineBars: 4 }); // 16 beats in 4/4
@@ -61,7 +68,7 @@ describe('editing the loop and event edges', () => {
     const layer = createPianoLayer(useStore.getState().song);
     useStore.getState().commit((s) => appendLayer(s, layer));
     useStore.getState().setView({ name: 'pianoLayer', layerId: layer.id });
-    const id = addPianoChord(layer.id, 0, 'major')!; // beats 0..4
+    const id = addChordAtCursor(layer.id, 0, 'major')!; // beats 0..4
     const event = () => findPianoLayer(useStore.getState().song, layer.id)!.events.find((e) => e.id === id)!;
     const steps = useStore.getState().past.length;
 

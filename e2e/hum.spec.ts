@@ -37,7 +37,7 @@ test.beforeEach(async ({ page }) => {
 test('Record OFF: humming lights the matching key red and commits nothing', async ({ page }) => {
   await page.getByRole('button', { name: 'Guitar' }).click();
   await page.getByTestId('add-layer').click();
-  await page.locator('[data-layer-type="single"]').click();
+  await page.locator('[data-layer-kind="notes"]').click();
 
   await page.getByTestId('hum').click();
   const status = page.getByTestId('hum-status');
@@ -73,7 +73,7 @@ test('Record OFF: humming lights the matching key red and commits nothing', asyn
 test('Record OFF: a live red key stays red even where guidance would dim it', async ({ page }) => {
   await page.getByRole('button', { name: 'Guitar' }).click();
   await page.getByTestId('add-layer').click();
-  await page.locator('[data-layer-type="single"]').click();
+  await page.locator('[data-layer-kind="notes"]').click();
   // Choose a manual key that does not contain A, so the hummed A3 is dimmed.
   await page.getByRole('button', { name: 'Back to guitar' }).click();
   await page.getByRole('button', { name: 'Back to song' }).click();
@@ -96,7 +96,7 @@ test('Record OFF: a live red key stays red even where guidance would dim it', as
 test('Record ON: humming creates editable notes at the cursor', async ({ page }) => {
   await page.getByRole('button', { name: 'Guitar' }).click();
   await page.getByTestId('add-layer').click();
-  await page.locator('[data-layer-type="single"]').click();
+  await page.locator('[data-layer-kind="notes"]').click();
   await page.getByTestId('record').click();
 
   await page.getByTestId('hum').click();
@@ -120,10 +120,11 @@ test('Record ON: humming creates editable notes at the cursor', async ({ page })
   await expect(blocks).toHaveCount(0);
 });
 
-test('Record ON: humming on a chord layer creates chord seeds', async ({ page }) => {
-  await page.getByRole('button', { name: 'Guitar' }).click();
+test('Record ON: humming into a piano Notes layer creates piano notes', async ({ page }) => {
+  await page.getByRole('button', { name: 'Piano' }).click();
   await page.getByTestId('add-layer').click();
-  await page.locator('[data-layer-type="strum"]').click();
+  await page.locator('[data-layer-kind="notes"]').click();
+  await expect(page.locator('[data-screen="layer"][data-layer-type="pianoNotes"]')).toBeVisible();
   await page.getByTestId('record').click();
 
   await page.getByTestId('hum').click();
@@ -131,8 +132,11 @@ test('Record ON: humming on a chord layer creates chord seeds', async ({ page })
   await page.waitForTimeout(900);
   await page.getByTestId('hum').click();
 
-  const blocks = page.locator('.block.chord.seed');
+  const blocks = page.locator('.block.note');
   await expect(blocks).toHaveCount(2);
-  await expect(blocks.nth(0)).toContainText('A');
-  await expect(blocks.nth(1)).toContainText('E');
+  await expect(blocks.nth(0)).toHaveText('A3');
+  await expect(blocks.nth(1)).toHaveText('E4');
+  // No guitar string/fret on a piano note.
+  await blocks.nth(0).click();
+  await expect(page.getByTestId('note-panel')).not.toContainText('fret');
 });

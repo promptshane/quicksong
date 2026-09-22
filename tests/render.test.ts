@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { renderSong, resolvePickString } from '../src/audio/render';
-import { addEvent, applyTimeSignature, buildChord, createLayer, createNoteEvent, createSeedChord, createSong } from '../src/model/song';
+import { renderSong } from '../src/audio/render';
+import {
+  addEvent,
+  applyTimeSignature,
+  createGuitarChord,
+  createLayer,
+  createNoteEvent,
+  createSong,
+} from '../src/model/song';
 import { eighthsPerBar, songBars } from '../src/model/time';
-import type { PickedLayer, StrumLayer } from '../src/model/types';
+import type { GuitarChordLayer } from '../src/model/types';
 
 describe('renderSong', () => {
   it('renders single notes directly', () => {
@@ -20,9 +27,9 @@ describe('renderSong', () => {
 
   it('renders strums on the eighth-note grid with a stagger', () => {
     let song = createSong();
-    const layer = createLayer('strum', song) as StrumLayer;
+    const layer = createLayer('chords', song) as GuitarChordLayer;
     song = { ...song, guitar: { layers: [layer] } };
-    const am = buildChord(createSeedChord(57, 0, 4), 'minor');
+    const am = createGuitarChord(9, 'minor', 0, 4);
     song = addEvent(song, layer.id, am);
     // Default pattern: down on each beat -> 4 strums × 5 strings
     const notes = renderSong(song);
@@ -33,10 +40,10 @@ describe('renderSong', () => {
 
   it('reverses string order for up-strums and rings until the next strum', () => {
     let song = createSong();
-    let layer = createLayer('strum', song) as StrumLayer;
+    let layer = createLayer('chords', song) as GuitarChordLayer;
     layer = { ...layer, strumPattern: ['down', null, 'up', null, null, null, null, null] };
     song = { ...song, guitar: { layers: [layer] } };
-    song = addEvent(song, layer.id, buildChord(createSeedChord(52, 0, 4), 'minor')); // Em, all six strings
+    song = addEvent(song, layer.id, createGuitarChord(4, 'minor', 0, 4)); // Em, all six strings
     const notes = renderSong(song);
     const down = notes.filter((n) => n.beat === 0);
     const up = notes.filter((n) => n.beat === 1);
@@ -47,18 +54,21 @@ describe('renderSong', () => {
     expect(up[0].velocity).toBeLessThan(down[0].velocity);
   });
 
-  it('picks one string per beat, respecting muted strings', () => {
+  it('picks a guitar chord one note at a time on its arpeggio pattern', () => {
     let song = createSong();
-    const layer = createLayer('picked', song) as PickedLayer;
+    const layer: GuitarChordLayer = { ...(createLayer('chords', song) as GuitarChordLayer), style: 'arpeggio', arp: { preset: 'up', rate: 'quarter' } };
     song = { ...song, guitar: { layers: [layer] } };
-    const d = buildChord(createSeedChord(50, 0, 4), 'major'); // D: strings 6 and 5 muted
-    song = addEvent(song, layer.id, { ...d, pickPattern: [6, 4, 3, 2] });
+    song = addEvent(song, layer.id, createGuitarChord(2, 'major', 0, 4)); // D: D3 A3 D4 F#4 (strings 6, 5 muted)
     const notes = renderSong(song);
-    expect(notes).toHaveLength(4);
-    // String 6 is muted on D, so the nearest sounding string (4) is used instead.
-    expect(notes[0].midi).toBe(50);
-    expect(resolvePickString(d, 6)).toBe(4);
-    expect(resolvePickString(d, 1)).toBe(1);
+    expect(notes.map((n) => [n.beat, n.midi])).toEqual([
+      [0, 50],
+      [1, 57],
+      [2, 62],
+      [3, 66],
+    ]);
+    expect(notes.every((n) => n.offsetSec === 0 && n.instrument === 'melodic')).toBe(true);
+    // Each picked note lets ring until the chord ends.
+    expect(notes.map((n) => n.durationBeats)).toEqual([4, 3, 2, 1]);
   });
 
   it('applies layer mute as zero gain', () => {
@@ -71,19 +81,21 @@ describe('renderSong', () => {
 });
 
 describe('time signature changes', () => {
-  it('resizes per-bar patterns', () => {
+  it('resizes per-bar patterns: strums and custom arpeggios', () => {
     let song = createSong();
-    const strum = createLayer('strum', song) as StrumLayer;
-    const picked = createLayer('picked', song) as PickedLayer;
-    song = { ...song, guitar: { layers: [strum, picked] } };
-    expect(strum.strumPattern).toHaveLength(8);
+    const layer: GuitarChordLayer = {
+      ...(createLayer('chords', song) as GuitarChordLayer),
+      arp: { preset: 'custom', rate: 'eighth', steps: [[0], [1], [2], [3], [0], [1], [2], [3]] },
+    };
+    song = { ...song, guitar: { layers: [layer] } };
+    expect(layer.strumPattern).toHaveLength(8);
     song = applyTimeSignature(song, { beatsPerBar: 6, beatUnit: 8 });
     expect(eighthsPerBar(song.timeSignature)).toBe(6);
-    expect((song.guitar.layers[0] as StrumLayer).strumPattern).toHaveLength(6);
-    expect((song.guitar.layers[1] as PickedLayer).pickPattern).toHaveLength(6);
+    const six = song.guitar.layers[0] as GuitarChordLayer;
+    expect(six.strumPattern).toHaveLength(6);
+    expect(six.arp.steps).toEqual([[0], [1], [2], [3], [0], [1]]);
     song = applyTimeSignature(song, { beatsPerBar: 3, beatUnit: 4 });
-    expect((song.guitar.layers[0] as StrumLayer).strumPattern).toHaveLength(6);
-    expect((song.guitar.layers[1] as PickedLayer).pickPattern).toHaveLength(3);
+    expect((song.guitar.layers[0] as GuitarChordLayer).strumPattern).toHaveLength(6);
   });
 
   it('uses explicit slots without automatically appending an empty bar', () => {

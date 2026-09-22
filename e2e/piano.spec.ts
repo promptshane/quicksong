@@ -21,15 +21,15 @@ test.afterEach(() => {
 async function openNewPianoLayer(page: Page) {
   await page.getByRole('button', { name: 'Piano' }).click();
   await expect(page.locator('[data-screen="piano"]')).toBeVisible();
-  // Piano has one kind of layer, so + Layer opens it straight away.
   await page.getByTestId('add-layer').click();
-  await expect(page.locator('[data-screen="pianoLayer"]')).toBeVisible();
+  await page.locator('[data-layer-kind="chords"]').click();
+  await expect(page.locator('[data-screen="layer"][data-layer-type="piano"]')).toBeVisible();
 }
 
 async function addChord(page: Page, name: string) {
   await page.locator(`.palette-chord[data-chord="${name}"]`).click();
-  await page.getByTestId('add-piano-chord').click();
-  await expect(page.getByTestId('piano-chord-name')).toHaveText(name);
+  await page.getByTestId('add-chord').click();
+  await expect(page.getByTestId('chord-name')).toHaveText(name);
 }
 
 test('piano: pick chords from the key, add a special note, shape the feel', async ({ page }) => {
@@ -41,14 +41,14 @@ test('piano: pick chords from the key, add a special note, shape the feel', asyn
 
   // Tapping a chord only previews it; nothing is added until Add.
   await page.locator('.palette-chord[data-chord="G"]').click();
-  await expect(page.getByTestId('add-piano-chord')).toHaveText('Add G at 1.1');
+  await expect(page.getByTestId('add-chord')).toHaveText('Add G at 1.1');
   await expect(page.locator('.block.piano')).toHaveCount(0);
-  await page.getByTestId('add-piano-chord').click();
+  await page.getByTestId('add-chord').click();
   await expect(page.locator('.block.piano')).toHaveCount(1);
-  await expect(page.getByTestId('piano-notes')).toHaveText(/G3\s*B3\s*D4/);
+  await expect(page.getByTestId('chord-notes')).toHaveText(/G3\s*B3\s*D4/);
 
   // Next chord makes room after it and returns to the palette.
-  await page.getByTestId('next-piano-chord').click();
+  await page.getByTestId('next-chord').click();
   await expect(page.locator('.ruler .bar-label')).toHaveCount(2);
   await addChord(page, 'C');
   await expect(page.locator('.block.piano')).toHaveCount(2);
@@ -59,39 +59,39 @@ test('piano: pick chords from the key, add a special note, shape the feel', asyn
   await expect(wheel.locator('[data-state="chord"]')).toHaveCount(3);
   await expect(wheel.locator('[data-state="key"]')).toHaveCount(4); // D F A B
   await expect(wheel.locator('[data-state="outside"]')).toHaveCount(5);
-  await wheel.getByRole('button', { name: 'Add B' }).click();
+  await wheel.getByRole('button', { name: 'Add B', exact: true }).click();
   await expect(page.getByTestId('wheel-chord-name')).toHaveText('Cmaj7');
   // Out-of-key notes are secondary but never blocked.
-  await wheel.getByRole('button', { name: 'Add F#' }).click();
+  await wheel.getByRole('button', { name: 'Add F#', exact: true }).click();
   await expect(page.getByTestId('wheel-chord-name')).toHaveText('C + B F#');
   await wheel.getByRole('button', { name: 'Remove F#' }).click();
   await expect(page.getByTestId('wheel-chord-name')).toHaveText('Cmaj7');
   await page.getByRole('button', { name: 'Done' }).click();
-  await expect(page.getByTestId('piano-chord-name')).toHaveText('Cmaj7');
+  await expect(page.getByTestId('chord-name')).toHaveText('Cmaj7');
   await expect(page.locator('.block.piano').nth(1)).toHaveAttribute('aria-label', 'Cmaj7');
 
   // Velocity and sustain.
-  await page.getByTestId('piano-velocity').fill('35');
-  await expect(page.getByTestId('piano-velocity-value')).toHaveText('soft · 35');
-  await page.getByTestId('piano-sustain').fill('2');
-  await expect(page.getByTestId('piano-sustain-value')).toHaveText('2 beats');
+  await page.getByTestId('chord-velocity').fill('35');
+  await expect(page.getByTestId('chord-velocity-value')).toHaveText('soft · 35');
+  await page.getByTestId('chord-length').fill('2');
+  await expect(page.getByTestId('chord-length-value')).toHaveText('2 beats');
   const strike = page.locator('.block.piano').nth(1).locator('.hit-strike');
   await expect(strike).toHaveAttribute('style', /height: 35%/);
 
   // Undo walks the edits back one step at a time.
   await page.getByTestId('undo').click();
-  await expect(page.getByTestId('piano-sustain-value')).toHaveText('1 bar');
+  await expect(page.getByTestId('chord-length-value')).toHaveText('1 bar');
   await page.getByTestId('undo').click();
-  await expect(page.getByTestId('piano-velocity-value')).toHaveText('hard · 80');
+  await expect(page.getByTestId('chord-velocity-value')).toHaveText('hard · 80');
   await page.getByTestId('undo').click();
-  await expect(page.getByTestId('piano-chord-name')).toHaveText('C + B F#');
+  await expect(page.getByTestId('chord-name')).toHaveText('C + B F#');
   await page.getByTestId('redo').click();
-  await expect(page.getByTestId('piano-chord-name')).toHaveText('Cmaj7');
+  await expect(page.getByTestId('chord-name')).toHaveText('Cmaj7');
 
   // Home shows the piano row with both hits; guitar is untouched.
   await page.getByRole('button', { name: 'Back to piano' }).click();
   await expect(page.locator('.layer-card')).toHaveCount(1);
-  await expect(page.locator('.layer-card small')).toHaveText('2 chords');
+  await expect(page.locator('.layer-card small')).toHaveText('Chords · Together · 2 chords');
   await page.getByRole('button', { name: 'Back to song' }).click();
   await expect(page.locator('[data-instrument="piano"] .overview .clip.piano')).toHaveCount(2);
   await expect(page.locator('[data-instrument="guitar"] .row-empty')).toHaveText('Tap to add guitar');
@@ -107,8 +107,8 @@ test('piano: pick chords from the key, add a special note, shape the feel', asyn
   await page.getByTestId('open-layer').click();
   await expect(page.getByTestId('palette-key')).toHaveText('Chords in G major');
   await page.locator('.block.piano').nth(1).click();
-  await expect(page.getByTestId('piano-chord-name')).toHaveText('Cmaj7');
-  await expect(page.getByTestId('piano-velocity-value')).toHaveText('hard · 80');
+  await expect(page.getByTestId('chord-name')).toHaveText('Cmaj7');
+  await expect(page.getByTestId('chord-velocity-value')).toHaveText('hard · 80');
 });
 
 test('piano: a manual key sets the palette; change chord swaps it in place', async ({ page }) => {
@@ -122,12 +122,12 @@ test('piano: a manual key sets the palette; change chord swaps it in place', asy
   await expect(page.locator('.palette-chord')).toHaveText(['Am', 'C', 'Dm', 'Em', 'F', 'G']);
 
   await addChord(page, 'Am');
-  await page.getByTestId('change-piano-chord').click();
-  await page.locator('[data-testid="piano-chord-panel"] .palette-chord[data-chord="F"]').click();
-  await expect(page.getByTestId('piano-chord-name')).toHaveText('F');
+  await page.getByTestId('change-chord').click();
+  await page.locator('[data-testid="chord-panel"] .palette-chord[data-chord="F"]').click();
+  await expect(page.getByTestId('chord-name')).toHaveText('F');
   await expect(page.locator('.block.piano')).toHaveCount(1);
   await page.getByTestId('undo').click();
-  await expect(page.getByTestId('piano-chord-name')).toHaveText('Am');
+  await expect(page.getByTestId('chord-name')).toHaveText('Am');
 
   // Hold to delete works on piano hits too.
   const block = page.locator('.block.piano');
@@ -177,7 +177,7 @@ test('timeline: swiping over an unselected hit scrolls; only the selected hit dr
 test('layer pages draw each hit: strike height = velocity, dropoff = duration', async ({ page }) => {
   await openNewPianoLayer(page);
   await addChord(page, 'C');
-  await page.getByTestId('piano-velocity').fill('40');
+  await page.getByTestId('chord-velocity').fill('40');
   await page.getByRole('button', { name: 'Back to piano' }).click();
   const pianoHit = page.locator('.layer-card .clip.hit.piano');
   await expect(pianoHit).toHaveCount(1);
@@ -188,7 +188,7 @@ test('layer pages draw each hit: strike height = velocity, dropoff = duration', 
   await page.getByRole('button', { name: 'Back to song' }).click();
   await page.getByRole('button', { name: 'Guitar' }).click();
   await page.getByTestId('add-layer').click();
-  await page.locator('[data-layer-type="single"]').click();
+  await page.locator('[data-layer-kind="notes"]').click();
   await page.getByTestId('record').click();
   await page.locator('.key[data-midi="48"]').dispatchEvent('pointerdown');
   await page.getByRole('button', { name: 'Back to guitar' }).click();
@@ -211,9 +211,9 @@ test('Song Home colours every hit by its chord or note degree in the key', async
 
   await openNewPianoLayer(page);
   await addChord(page, 'C');
-  await page.getByTestId('next-piano-chord').click();
+  await page.getByTestId('next-chord').click();
   await addChord(page, 'Am');
-  await page.getByTestId('next-piano-chord').click();
+  await page.getByTestId('next-chord').click();
   await addChord(page, 'G');
   await page.getByRole('button', { name: 'Back to piano' }).click();
   await page.getByRole('button', { name: 'Back to song' }).click();
@@ -221,7 +221,7 @@ test('Song Home colours every hit by its chord or note degree in the key', async
   // A guitar note: E is iii, an out-of-key C# is neutral.
   await page.getByRole('button', { name: 'Guitar' }).click();
   await page.getByTestId('add-layer').click();
-  await page.locator('[data-layer-type="single"]').click();
+  await page.locator('[data-layer-kind="notes"]').click();
   await page.getByTestId('record').click();
   await page.locator('.key[data-midi="52"]').dispatchEvent('pointerdown');
   await page.locator('.key[data-midi="49"]').dispatchEvent('pointerdown');
@@ -269,10 +269,10 @@ test('editor playback loops back to bar 1; the ruler shows the loop length', asy
   await page.getByTestId('play').click();
   await expect(page.getByTestId('play')).toHaveAttribute('aria-label', 'Play');
 
-  await page.getByTestId('next-piano-chord').click();
+  await page.getByTestId('next-chord').click();
   await expect(page.getByTestId('loop-badge')).toHaveText('⟲ 2 bars');
   await addChord(page, 'G');
-  await page.getByTestId('next-piano-chord').click();
+  await page.getByTestId('next-chord').click();
   await expect(page.getByTestId('loop-badge')).toHaveText('⟲ 3 bars · +1 for an even 4');
   await expect(page.getByTestId('loop-badge')).not.toHaveClass(/even/);
 });
@@ -289,7 +289,7 @@ test('chords carry their key colour in the editor, on buttons and in the wheel',
   await expect(page.getByTestId('note-wheel')).toHaveAttribute('style', /--tone: var\(--deg-5\)/);
   await page.getByRole('button', { name: 'Done' }).click();
 
-  // Guitar: blocks are filled with the key colour; Major/Minor carry it too.
+  // Guitar chords: palette and blocks carry the key colour too.
   // Lock C major first — in Auto, more A material would re-read the song as F major.
   await page.getByRole('button', { name: 'Back to piano' }).click();
   await page.getByRole('button', { name: 'Back to song' }).click();
@@ -299,11 +299,11 @@ test('chords carry their key colour in the editor, on buttons and in the wheel',
   await page.getByRole('button', { name: 'Done' }).click();
   await page.getByRole('button', { name: 'Guitar' }).click();
   await page.getByTestId('add-layer').click();
-  await page.locator('[data-layer-type="strum"]').click();
-  await page.getByTestId('record').click();
-  await page.locator('.key[data-midi="57"]').dispatchEvent('pointerdown'); // A
+  await page.locator('[data-layer-kind="chords"]').click();
+  await expect(page.locator('.palette-chord[data-chord="Am"]')).toHaveAttribute('style', /--tone: var\(--deg-5\)/);
+  await addChord(page, 'Am');
   await expect(page.locator('.block.chord.keyed')).toHaveAttribute('style', /--tone: var\(--deg-5\)/);
-  await expect(page.getByTestId('make-minor')).toHaveAttribute('style', /--tone: var\(--deg-5\)/);
+  await expect(page.locator('.piano-chord-name')).toHaveAttribute('style', /--tone: var\(--deg-5\)/);
 });
 
 test('Undo on Song Home: a whole tempo adjustment is one step, and says what it undid', async ({ page }) => {
@@ -341,20 +341,20 @@ test('edge handles on a selected hit change where it starts and ends (piano and 
 
   // Default zoom: one beat = 56 px.
   await dragBy(page, 'edge-end', -56);
-  await expect(page.getByTestId('piano-sustain-value')).toHaveText('3 beats');
+  await expect(page.getByTestId('chord-length-value')).toHaveText('3 beats');
   await page.getByTestId('undo').click(); // the whole drag is one step
-  await expect(page.getByTestId('piano-sustain-value')).toHaveText('1 bar');
+  await expect(page.getByTestId('chord-length-value')).toHaveText('1 bar');
 
   await dragBy(page, 'edge-start', 112);
   await expect(block).toHaveCSS('left', '112px');
-  await expect(page.getByTestId('piano-sustain-value')).toHaveText('2 beats'); // the end stayed put
+  await expect(page.getByTestId('chord-length-value')).toHaveText('2 beats'); // the end stayed put
 
   // Guitar notes get the same grips.
   await page.getByRole('button', { name: 'Back to piano' }).click();
   await page.getByRole('button', { name: 'Back to song' }).click();
   await page.getByRole('button', { name: 'Guitar' }).click();
   await page.getByTestId('add-layer').click();
-  await page.locator('[data-layer-type="single"]').click();
+  await page.locator('[data-layer-kind="notes"]').click();
   await page.getByTestId('record').click();
   await page.locator('.key[data-midi="48"]').dispatchEvent('pointerdown'); // a 1-beat note, selected
   await dragBy(page, 'edge-end', 56);
@@ -364,7 +364,7 @@ test('edge handles on a selected hit change where it starts and ends (piano and 
 test('the golden loop region: select, resize, reset — and Play loops only it', async ({ page }) => {
   await openNewPianoLayer(page);
   await addChord(page, 'C');
-  await page.getByTestId('next-piano-chord').click();
+  await page.getByTestId('next-chord').click();
   await addChord(page, 'G');
   await page.locator('.timeline-inner').click({ position: { x: 120, y: 110 } }); // deselect
   await expect(page.getByTestId('loop-badge')).toHaveText('⟲ 2 bars');
@@ -428,7 +428,7 @@ test('Play starts at the loop; hold the loop bar to switch looping off and play 
   await page.getByRole('button', { name: 'Done' }).click();
   await openNewPianoLayer(page);
   await addChord(page, 'C');
-  await page.getByTestId('next-piano-chord').click();
+  await page.getByTestId('next-chord').click();
   await addChord(page, 'G');
   await page.locator('.timeline-inner').click({ position: { x: 60, y: 110 } }); // deselect; cursor in bar 1
   const playheadX = () => page.locator('.timeline .playhead').evaluate((el) => parseFloat((el as HTMLElement).style.left));

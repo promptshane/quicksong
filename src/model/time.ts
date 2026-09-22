@@ -55,7 +55,7 @@ export function secondsToBeats(seconds: number, bpm: number): number {
 /** Last beat that contains any event. */
 export function lastEventEnd(song: Song): number {
   let end = 0;
-  for (const layer of [...song.guitar.layers, ...song.piano.layers]) {
+  for (const layer of [...song.guitar.layers, ...song.piano.layers, ...song.drums.layers]) {
     for (const ev of layer.events) end = Math.max(end, ev.start + ev.duration);
   }
   return end;
@@ -155,4 +155,11 @@ export function rangeLabel(start: number, end: number, ts: TimeSignature): strin
 export function pointLabel(beat: number, ts: TimeSignature): string {
   const bars = beat / ts.beatsPerBar;
   return Math.abs(bars - Math.round(bars)) < 1e-6 ? `bar ${Math.round(bars) + 1}` : positionLabel(beat, ts);
+}
+
+/** Counting label for an eighth slot in a bar: "1 & 2 &" in 4/4, "1 2 3 4 5 6" in 6/8. */
+export function eighthSlotLabel(index: number, ts: TimeSignature): string {
+  const per = eighthsPerBeat(ts);
+  if (per === 1) return String(index + 1);
+  return index % per === 0 ? String(index / per + 1) : '&';
 }

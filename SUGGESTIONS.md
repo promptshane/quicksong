@@ -26,3 +26,9 @@ Ideas and open questions noticed while building, parked here to revisit. Nothing
 ### Music theory display
 - **Flat keys are spelled with sharps.** Note and chord names always use sharps, so F major's IV chord shows as **A#** instead of **B♭** (same for E♭, A♭, D♭ keys). Spelling names from the key would read more naturally.
 - **Key inference is duration-weighted, so shortening a chord can re-key an Auto song.** Trimming a C chord's sustain made Auto re-read C–Am–F as F major, recolouring everything. Worth considering whether sustain should count toward key inference at all (vs. the chord's presence), or whether Auto should be "stickier".
+- **Borrowed chords can't be picked directly.** The chord palette offers only the key's own chords, so a common borrowed chord (e.g. F or B♭ in G major, the ♭VII / IV of the parallel minor) can only be reached by changing the key or adding notes on the wheel. An "other chords" row (secondary colour) under the palette would keep the default simple while allowing it.
+
+### Chords, notes and drums
+- **Hum a chord root.** Chords now come only from the key's chord selector; humming/keyboard feed Notes layers. A "hum to find the chord" shortcut (hum a note → the palette highlights the chords containing it) would bring humming back to chord writing without the old seed-note flow.
+- **Drum beat presets / fills.** Drums are written hit by hit; a few one-tap starting beats (rock, half-time, four-on-the-floor) that fill the grid for the loop region would speed things up without taking away hit-level control.
+- **Guitar picked notes ring to the chord's end** (at most a bar). A "let ring / stop at next note" choice would make picking sound tighter.

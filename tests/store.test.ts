@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { buildKeyWheel } from '../src/model/keyWheel';
 import {
-  convertChordLayerType,
   createLayer,
   duplicateLayer,
   findLayer,
@@ -11,7 +10,7 @@ import {
   setManualKey,
 } from '../src/model/song';
 import { songBars } from '../src/model/time';
-import type { StrumLayer } from '../src/model/types';
+import type { GuitarChordLayer } from '../src/model/types';
 import { useStore } from '../src/state/store';
 
 // Editing actions talk to the audio engine for previews; stub it out.
@@ -23,15 +22,17 @@ import {
   auditionNote,
   changeEventDuration,
   deleteEvent,
+  addChordAtCursor,
+  changeChord,
   insertAtCursor,
-  makeChord,
   moveEvent,
+  setChordLayerStyle,
   setStrumSlot,
   shiftNotePitch,
-  toggleStringMute,
+  toggleChordNote,
 } from '../src/state/actions';
 
-function addLayer(type: 'single' | 'strum' | 'picked') {
+function addLayer(type: 'single' | 'chords') {
   const { song, commit } = useStore.getState();
   const layer = createLayer(type, song);
   commit((s) => ({ ...s, guitar: { layers: [...s.guitar.layers, layer] } }));
@@ -63,21 +64,21 @@ describe('undo / redo', () => {
     expect(notes()).toHaveLength(2);
   });
 
-  it('covers chord conversion, string edits, pattern edits, moves and deletes', () => {
-    const layerId = addLayer('strum');
-    const id = insertAtCursor(layerId, 57)!;
+  it('covers guitar chord changes, wheel notes, pattern edits, moves and deletes', () => {
+    const layerId = addLayer('chords');
+    const id = addChordAtCursor(layerId, 9, 'minor')!; // Am from the key palette
     const chord = () => findLayer(useStore.getState().song, layerId)!.events.find((e) => e.id === id)!;
-    const layer = () => findLayer(useStore.getState().song, layerId) as StrumLayer;
+    const layer = () => findLayer(useStore.getState().song, layerId) as GuitarChordLayer;
 
-    expect(chord().kind).toBe('chord');
-    makeChord(layerId, id, 'minor');
-    expect(chord().kind === 'chord' && chord().quality).toBe('minor');
+    expect(chord()).toMatchObject({ kind: 'chord', root: 9, quality: 'minor' });
+    changeChord(layerId, id, 5, 'major');
+    expect(chord()).toMatchObject({ root: 5, quality: 'major' });
     useStore.getState().undo();
-    expect(chord().kind === 'chord' && chord().quality).toBe('note');
+    expect(chord()).toMatchObject({ root: 9, quality: 'minor' });
     useStore.getState().redo();
-    expect(chord().kind === 'chord' && chord().quality).toBe('minor');
+    useStore.getState().undo();
 
-    toggleStringMute(layerId, id, 0); // enable low E on Am
+    toggleChordNote(layerId, id, 7); // + G on the muted low E: Am7
     expect(chord().kind === 'chord' && chord().strings[0].muted).toBe(false);
     useStore.getState().undo();
     expect(chord().kind === 'chord' && chord().strings[0].muted).toBe(true);
@@ -120,11 +121,11 @@ describe('undo / redo', () => {
     expect(note.kind === 'note' && note.midi).toBe(71);
   });
 
-  it('truncates the previous chord when a new one is inserted inside it', () => {
-    const layerId = addLayer('strum');
-    insertAtCursor(layerId, 57); // bar 1, 4 beats
+  it('lifts the previous chord when a new one is added inside it', () => {
+    const layerId = addLayer('chords');
+    addChordAtCursor(layerId, 9, 'minor'); // bar 1, 4 beats
     useStore.getState().setCursor(2);
-    insertAtCursor(layerId, 62);
+    addChordAtCursor(layerId, 2, 'minor');
     const events = findLayer(useStore.getState().song, layerId)!.events;
     expect(events.map((e) => [e.start, e.duration])).toEqual([
       [0, 2],
@@ -133,16 +134,15 @@ describe('undo / redo', () => {
   });
 });
 
-describe('layer duplication and chord playback type', () => {
-  it('duplicates a chord layer independently and switches strum/picked without losing chords', () => {
-    const layerId = addLayer('strum');
-    const eventId = insertAtCursor(layerId, 57)!;
-    makeChord(layerId, eventId, 'minor');
+describe('layer duplication and chord playing style', () => {
+  it('duplicates a chord layer independently and switches strum/pick without losing chords', () => {
+    const layerId = addLayer('chords');
+    addChordAtCursor(layerId, 9, 'minor');
 
     useStore.getState().commit((song) => duplicateLayer(song, layerId));
     let layers = useStore.getState().song.guitar.layers;
     expect(layers).toHaveLength(2);
-    expect(layers.map((layer) => layer.name)).toEqual(['Strummed Chords 1', 'Strummed Chords 2']);
+    expect(layers.map((layer) => layer.name)).toEqual(['Guitar Chords 1', 'Guitar Chords 2']);
 
     const original = layers[0];
     const duplicate = layers[1];
@@ -162,13 +162,16 @@ describe('layer duplication and chord playback type', () => {
       expect(duplicate.events[0].strings).not.toBe(original.events[0].strings);
     }
 
-    useStore.getState().commit((song) => convertChordLayerType(song, duplicate.id, 'picked'));
+    setChordLayerStyle(duplicate.id, 'arpeggio');
     layers = useStore.getState().song.guitar.layers;
-    expect(layers[0].type).toBe('strum');
-    expect(layers[1].type).toBe('picked');
-    expect(layers[1].name).toBe('Picked Chords 1');
-    expect(layers[1].events).toHaveLength(1);
-    expect(layers[1].events[0].id).toBe(duplicate.events[0].id);
+    const [a, b] = layers as GuitarChordLayer[];
+    expect(a.style).toBe('together');
+    expect(b.style).toBe('arpeggio');
+    expect(b.name).toBe('Guitar Chords 2'); // the name is the user's label; style does not rename
+    expect(b.events.map((e) => e.id)).toEqual([duplicate.events[0].id]);
+    expect(b.strumPattern).toEqual(a.strumPattern); // switching back later keeps the strum
+    useStore.getState().undo();
+    expect((useStore.getState().song.guitar.layers[1] as GuitarChordLayer).style).toBe('together');
   });
 });
 
@@ -244,16 +247,14 @@ describe('explicit timeline slots', () => {
 describe('Auto key preference in the store', () => {
   /** A long C chord then a short G chord: C major inferred, G major still plausible. */
   function recordCThenG(layerId: string) {
-    const c = insertAtCursor(layerId, 60)!;
-    makeChord(layerId, c, 'major');
+    const c = addChordAtCursor(layerId, 0, 'major')!;
     changeEventDuration(layerId, c, 8);
-    const g = insertAtCursor(layerId, 55)!;
-    makeChord(layerId, g, 'major');
+    const g = addChordAtCursor(layerId, 7, 'major')!;
     changeEventDuration(layerId, g, -3);
   }
 
   it('tapping a plausible key keeps Auto and survives compatible edits', () => {
-    const layerId = addLayer('strum');
+    const layerId = addLayer('chords');
     recordCThenG(layerId);
     const { commit } = useStore.getState();
     expect(buildKeyWheel(useStore.getState().song).assumed).toEqual({ tonic: 0, quality: 'major' });
@@ -265,30 +266,24 @@ describe('Auto key preference in the store', () => {
     expect(wheel.preferred).toBe(true);
 
     // Em fits both C and G major: preference stays.
-    const em = insertAtCursor(layerId, 52)!;
-    makeChord(layerId, em, 'minor');
+    addChordAtCursor(layerId, 4, 'minor');
     wheel = buildKeyWheel(useStore.getState().song);
     expect(wheel.assumed).toEqual({ tonic: 7, quality: 'major' });
     expect(wheel.preferred).toBe(true);
   });
 
   it('is dropped by commit when committed material makes it impossible, and undo brings it back', () => {
-    const layerId = addLayer('strum');
+    const layerId = addLayer('chords');
     recordCThenG(layerId);
     useStore.getState().commit((s) => setAutoKeyPreference(s, { tonic: 7, quality: 'major' }));
 
-    // Even the seed note F has no place in G major: the preference goes with
-    // that very commit, before the chord is built.
-    const f = insertAtCursor(layerId, 53)!;
+    // F has no place in G major: the preference goes with that very commit.
+    addChordAtCursor(layerId, 5, 'major');
     let song = useStore.getState().song;
-    expect(song.key).toEqual({ mode: 'auto', tonality: 'major' });
-    makeChord(layerId, f, 'major');
-    song = useStore.getState().song;
     expect(song.key).toEqual({ mode: 'auto', tonality: 'major' });
     expect(buildKeyWheel(song).assumed).toEqual({ tonic: 0, quality: 'major' });
 
-    // Undoing both steps restores the state that still had the preference.
-    useStore.getState().undo();
+    // Undo restores the state that still had the preference.
     useStore.getState().undo();
     song = useStore.getState().song;
     expect(song.key).toMatchObject({ mode: 'auto', preference: { tonic: 7, quality: 'major' } });
@@ -296,7 +291,7 @@ describe('Auto key preference in the store', () => {
   });
 
   it('a preview never disturbs the preference', () => {
-    const layerId = addLayer('strum');
+    const layerId = addLayer('chords');
     recordCThenG(layerId);
     useStore.getState().commit((s) => setAutoKeyPreference(s, { tonic: 7, quality: 'major' }));
     const before = useStore.getState().song;
@@ -307,11 +302,10 @@ describe('Auto key preference in the store', () => {
   });
 
   it('manual key still works as before and is untouched by material', () => {
-    const layerId = addLayer('strum');
+    const layerId = addLayer('chords');
     useStore.getState().commit((s) => setManualKey(s, { tonic: 9, quality: 'minor' }));
     recordCThenG(layerId);
-    const f = insertAtCursor(layerId, 66)!; // F# major: outside A minor entirely
-    makeChord(layerId, f, 'major');
+    addChordAtCursor(layerId, 6, 'major'); // F# major: outside A minor entirely
     const song = useStore.getState().song;
     expect(song.key).toEqual({ mode: 'manual', tonic: 9, quality: 'minor' });
     const wheel = buildKeyWheel(song);

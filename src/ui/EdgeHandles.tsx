@@ -1,9 +1,7 @@
 import { useRef } from 'react';
-import { findAnyLayer } from '../model/song';
 import { eighthBeats, snapToEighth } from '../model/time';
 import type { AnyEvent, TimeSignature } from '../model/types';
 import { auditionEvent, resizeEvent } from '../state/actions';
-import { useStore } from '../state/store';
 import { useHorizontalDrag } from './useHorizontalDrag';
 
 interface EdgeHandlesProps {
@@ -29,10 +27,7 @@ export function EdgeHandles({ layerId, event, pxPerBeat, timeSignature }: EdgeHa
     origin.current = { start: event.start, end: event.start + event.duration, key: `edge:${event.id}:${gestures}` };
   };
   const hear = (moved: boolean) => {
-    if (!moved) return;
-    const { song } = useStore.getState();
-    const latest = (findAnyLayer(song, layerId)?.events as AnyEvent[] | undefined)?.find((e) => e.id === event.id);
-    if (latest) auditionEvent(latest, song.bpm);
+    if (moved) auditionEvent(layerId, event.id);
   };
 
   const startDrag = useHorizontalDrag({

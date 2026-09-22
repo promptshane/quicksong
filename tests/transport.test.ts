@@ -3,7 +3,12 @@ import * as engine from '../src/audio/engine';
 import { passBeat, songBeatAt } from '../src/audio/loop';
 import { transport } from '../src/audio/transport';
 import { createPianoChord, createPianoLayer } from '../src/model/piano';
-import { addEvent, appendLayer, createSong, removeEvent } from '../src/model/song';
+import {
+  addEvent,
+  appendLayer,
+  createSong,
+  removeEvent,
+} from '../src/model/song';
 import type { Song } from '../src/model/types';
 
 // A fake audio clock the test moves by hand; the transport schedules against it.

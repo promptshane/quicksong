@@ -9,7 +9,7 @@ import { TopBar } from './TopBar';
 import { UndoRedo } from './UndoRedo';
 
 const INSTRUMENTS = [
-  { id: 'drums', label: 'Drums', icon: '🥁', enabled: false },
+  { id: 'drums', label: 'Drums', icon: '🥁', enabled: true },
   { id: 'guitar', label: 'Guitar', icon: '🎸', enabled: true },
   { id: 'piano', label: 'Piano', icon: '🎹', enabled: true },
   { id: 'bass', label: 'Bass', icon: '🎚', enabled: false },
@@ -43,7 +43,8 @@ export function HomeScreen() {
       <div className="screen-body">
         <div className="rows">
           {INSTRUMENTS.map((inst) => {
-            const layers = inst.id === 'guitar' ? song.guitar.layers : inst.id === 'piano' ? song.piano.layers : [];
+            const layers =
+              inst.id === 'guitar' ? song.guitar.layers : inst.id === 'piano' ? song.piano.layers : inst.id === 'drums' ? song.drums.layers : [];
             return (
               <button
                 key={inst.id}
@@ -52,7 +53,7 @@ export function HomeScreen() {
                 aria-label={inst.label}
                 data-instrument={inst.id}
                 onClick={() => {
-                  if (inst.id === 'guitar' || inst.id === 'piano') setView({ name: inst.id });
+                  if (inst.id === 'guitar' || inst.id === 'piano' || inst.id === 'drums') setView({ name: inst.id });
                   else toast(`${inst.label} is coming later`);
                 }}
               >

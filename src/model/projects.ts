@@ -1,6 +1,8 @@
+import { DEFAULT_ARP } from './arpeggio';
 import { newId } from './ids';
-import { reconcileKeyPreference } from './song';
-import type { Song } from './types';
+import { defaultStrumPattern, reconcileKeyPreference } from './song';
+import { eighthsPerBar, eighthsPerBeat } from './time';
+import type { ArpPattern, ChordEvent, GuitarLayer, Song, StrumSlot, TimeSignature } from './types';
 
 /**
  * Saved projects. A project is a named, independently persisted Song.
@@ -44,7 +46,8 @@ export function isPristineSong(song: Song): boolean {
     song.loopRegion === undefined &&
     song.loopOff === undefined &&
     song.guitar.layers.length === 0 &&
-    (song.piano?.layers.length ?? 0) === 0
+    (song.piano?.layers.length ?? 0) === 0 &&
+    (song.drums?.layers.length ?? 0) === 0
   );
 }
 
@@ -95,9 +98,42 @@ export function duplicateProjectRecord(source: ProjectRecord, taken: Iterable<st
   return createProjectRecord(duplicateName(source.name, taken), cloneSong(source.song), now);
 }
 
+/** Layer shapes saved before guitar chord layers had a playing style. */
+interface LegacyChordEvent extends Omit<ChordEvent, 'styleOverride'> {
+  pickPattern?: number[] | null;
+}
+type LegacyGuitarLayer =
+  | { type: 'strum'; id: string; name: string; volume: number; muted: boolean; events: LegacyChordEvent[]; strumPattern: StrumSlot[] }
+  | { type: 'picked'; id: string; name: string; volume: number; muted: boolean; events: LegacyChordEvent[]; pickPattern: number[] };
+
 /**
- * Bring a stored song up to date. Songs saved before Piano existed get an
- * empty piano section. Songs saved before explicit timeline slots open at the
+ * An old picking order (guitar string numbers 6..1, one per beat) as a custom
+ * arpeggio: strings count up from the low E, so string 6 is the lowest note.
+ */
+function pickOrderToArp(order: number[], ts: TimeSignature): ArpPattern {
+  const steps: number[][] = Array.from({ length: eighthsPerBar(ts) }, () => []);
+  order.forEach((string, beat) => {
+    const slot = beat * eighthsPerBeat(ts);
+    if (slot < steps.length) steps[slot] = [Math.max(0, 6 - string)];
+  });
+  return { preset: 'custom', rate: 'quarter', steps };
+}
+
+function migrateGuitarLayer(layer: GuitarLayer | LegacyGuitarLayer, ts: TimeSignature): GuitarLayer {
+  if (layer.type === 'single' || layer.type === 'chords') return layer;
+  const events = layer.events.map(({ pickPattern, ...event }): ChordEvent =>
+    pickPattern ? { ...event, styleOverride: { style: 'arpeggio', arp: pickOrderToArp(pickPattern, ts) } } : event,
+  );
+  const base = { id: layer.id, name: layer.name, volume: layer.volume, muted: layer.muted, type: 'chords' as const, events };
+  if (layer.type === 'strum') return { ...base, style: 'together', strumPattern: layer.strumPattern, arp: DEFAULT_ARP };
+  return { ...base, style: 'arpeggio', strumPattern: defaultStrumPattern(ts), arp: pickOrderToArp(layer.pickPattern, ts) };
+}
+
+/**
+ * Bring a stored song up to date. Guitar chord layers saved as "strummed" or
+ * "picked" become chord layers whose style is strum or pick (a picking order
+ * carries over as a custom pick pattern). Songs saved before Piano or Drums
+ * existed get empty sections, and older piano chord layers play together. Songs saved before explicit timeline slots open at the
  * smallest size that still contains all material — no automatic extra empty
  * bar. Also drops an Auto key preference the material rules out.
  */
@@ -107,10 +143,22 @@ export function normalizeStoredSong(stored: Song): Song {
   if (!piano || !Array.isArray(piano.layers)) {
     song = { ...song, piano: { layers: [] } };
   }
+  const drums = (song as Partial<Song>).drums;
+  if (!drums || !Array.isArray(drums.layers)) {
+    song = { ...song, drums: { layers: [] } };
+  }
+  const guitarLayers = song.guitar.layers as (GuitarLayer | LegacyGuitarLayer)[];
+  if (guitarLayers.some((l) => l.type === 'strum' || l.type === 'picked')) {
+    song = { ...song, guitar: { ...song.guitar, layers: guitarLayers.map((l) => migrateGuitarLayer(l, song.timeSignature)) } };
+  }
+  if (song.piano.layers.some((l) => l.type === 'piano' && !l.style)) {
+    const layers = song.piano.layers.map((l) => (l.type === 'piano' && !l.style ? { ...l, style: 'together' as const, arp: DEFAULT_ARP } : l));
+    song = { ...song, piano: { ...song.piano, layers } };
+  }
   if (!Number.isFinite(song.timelineBars) || song.timelineBars < 1) {
     const perBar = song.timeSignature.beatsPerBar;
     let lastEnd = 0;
-    for (const layer of [...song.guitar.layers, ...song.piano.layers]) {
+    for (const layer of [...song.guitar.layers, ...song.piano.layers, ...song.drums.layers]) {
       for (const event of layer.events) lastEnd = Math.max(lastEnd, event.start + event.duration);
     }
     song = { ...song, timelineBars: Math.max(1, Math.ceil(lastEnd / perBar - 1e-6)) };

@@ -1,29 +1,43 @@
 import { getAudioEngine } from '../audio/engine';
-import { renderChordPreview, renderPianoPreview } from '../audio/render';
+import { renderChordPreview, renderEvent, renderPianoPreview } from '../audio/render';
 import { transport } from '../audio/transport';
-import { relabelChord, setStringMuted, shiftStringFret, voicingsFor } from '../model/chords';
+import { voicingsFor } from '../model/chords';
+import { DRUM_MIDI, drumHitAt, toggleDrumHit } from '../model/drums';
+import { setGuitarChord, toggleGuitarChordNote } from '../model/guitarChords';
 import { clampMidi } from '../model/music';
-import { createPianoChord, setPianoChord, togglePianoNote } from '../model/piano';
+import { createPianoChord, pianoChordNotes, setPianoChord, togglePianoNote } from '../model/piano';
 import {
   addEvent,
-  addToneToChord,
-  buildChord,
+  createGuitarChord,
   createNoteEvent,
-  createSeedChord,
   findAnyLayer,
-  findLayer,
-  findPianoLayer,
-  isChordLayer,
   isLoopOn,
+  isStyledLayer,
+  layerKind,
   removeEvent,
+  setChordStyleOverride,
+  setLayerArp,
+  setLayerStyle,
   setLoopOn,
   setLoopRegion,
+  updateAnyLayer,
   updateEvent,
   updateLayer,
-  updatePianoLayer,
 } from '../model/song';
 import { beatsToSeconds, eighthBeats, loopRange, snapToEighth, songBars, songBeats } from '../model/time';
-import type { AnyEvent, ChordEvent, ChordQuality, NoteEvent, PianoEvent, PitchClass, Song } from '../model/types';
+import type {
+  AnyEvent,
+  ArpPattern,
+  ChordEvent,
+  ChordQuality,
+  ChordStyle,
+  ChordStyleOverride,
+  DrumPiece,
+  NoteEvent,
+  PianoEvent,
+  PitchClass,
+} from '../model/types';
+import { DEFAULT_VELOCITY } from '../model/types';
 import { useStore } from './store';
 
 /**
@@ -32,116 +46,84 @@ import { useStore } from './store';
  * all drive them the same way.
  */
 
+// ---- hearing things ----------------------------------------------------------
+
 export function auditionNote(midi: number, velocity = 0.8, seconds = 0.6): void {
   void getAudioEngine().play(midi, velocity, seconds);
 }
 
-export function auditionChord(chord: ChordEvent, seconds = 1.2): void {
-  const engine = getAudioEngine();
-  for (const n of renderChordPreview(chord)) void engine.play(n.midi, chord.velocity, seconds, n.offsetSec);
-}
-
-/** Hear a piano chord: every key at once, held for `seconds`. */
-export function auditionPianoChord(event: Pick<PianoEvent, 'notes' | 'velocity'>, seconds = 1.6): void {
-  const engine = getAudioEngine();
-  for (const n of renderPianoPreview(event)) void engine.play(n.midi, event.velocity, seconds, n.offsetSec);
-}
-
-function chordDefaultDuration(song: Song): number {
-  return song.timeSignature.beatsPerBar;
-}
-
-/** Trim any chord in the layer that spans `beat` so it ends there. */
-function truncateChordsAt(song: Song, layerId: string, beat: number): Song {
-  return updateLayer(song, layerId, (layer) => {
-    if (layer.type === 'single') return layer;
-    const step = eighthBeats(song.timeSignature);
-    return {
-      ...layer,
-      events: layer.events.map((c) =>
-        c.start < beat - 1e-6 && c.start + c.duration > beat + 1e-6
-          ? { ...c, duration: Math.max(step, beat - c.start) }
-          : c,
-      ),
-    };
-  });
+export function auditionDrum(piece: DrumPiece, velocity = DEFAULT_VELOCITY): void {
+  void getAudioEngine().play(DRUM_MIDI[piece], velocity, 0.3, 0, 'drums');
 }
 
 /**
- * Insert a note at the cursor. In a single-note layer this adds a NoteEvent;
- * in a chord layer it adds a one-tone "seed" chord ready for Major/Minor.
- * Returns the new event's id.
+ * Preview a chord picked from the key before it is added: a quick down-strum
+ * of its guitar voicing, or all piano keys at once.
  */
+export function auditionPaletteChord(instrument: 'guitar' | 'piano', root: PitchClass, quality: ChordQuality): void {
+  const engine = getAudioEngine();
+  if (instrument === 'guitar') {
+    const chord = createGuitarChord(root, quality, 0, 1);
+    for (const n of renderChordPreview(chord)) void engine.play(n.midi, DEFAULT_VELOCITY, 1.2, n.offsetSec);
+  } else {
+    for (const n of renderPianoPreview({ notes: pianoChordNotes(root, quality) })) void engine.play(n.midi, DEFAULT_VELOCITY, 1.6, n.offsetSec);
+  }
+}
+
+/** Long enough to hear a pattern or a sustain, short enough not to drag on. */
+const PREVIEW_MAX_SEC = 4;
+
+/**
+ * Play one event exactly as it sounds in the song — strum pattern, picking /
+ * arpeggio, sustain — up to a few seconds.
+ */
+export function auditionEvent(layerId: string, eventId: string): void {
+  const { song } = useStore.getState();
+  const engine = getAudioEngine();
+  for (const n of renderEvent(song, layerId, eventId)) {
+    const at = beatsToSeconds(n.beat, song.bpm) + n.offsetSec;
+    if (at >= PREVIEW_MAX_SEC) continue;
+    const seconds = Math.min(beatsToSeconds(n.durationBeats, song.bpm), PREVIEW_MAX_SEC - at);
+    void engine.play(n.midi, n.velocity, seconds, at, n.instrument);
+  }
+}
+
+// ---- notes layers (guitar and piano single notes) ----------------------------
+
+/** Insert a note at the cursor in a notes layer. Returns the new event's id. */
 export function insertAtCursor(layerId: string, midi: number, velocity?: number): string | null {
   const { song, cursorBeat, commit, setCursor, select } = useStore.getState();
-  const layer = findLayer(song, layerId);
-  if (!layer) return null;
+  const layer = findAnyLayer(song, layerId);
+  if (!layer || layerKind(layer) !== 'notes') return null;
   const start = snapToEighth(cursorBeat, song.timeSignature);
-  let event: AnyEvent;
-  if (layer.type === 'single') {
-    event = createNoteEvent(clampMidi(midi), start, 1, velocity);
-  } else {
-    event = createSeedChord(clampMidi(midi), start, chordDefaultDuration(song), velocity);
-  }
-  commit((s) => addEvent(truncateChordsAt(s, layerId, start), layerId, event));
+  const event = createNoteEvent(clampMidi(midi), start, 1, velocity);
+  commit((s) => addEvent(s, layerId, event));
   setCursor(start + event.duration);
   select(event.id);
   return event.id;
 }
 
-/** Insert several already-timed notes (from humming). */
+/** Insert several already-timed notes (from humming) into a notes layer. */
 export function insertDetectedNotes(
   layerId: string,
   notes: { midi: number; start: number; duration: number; velocity: number }[],
 ): string[] {
   const { song, commit, setCursor, select } = useStore.getState();
-  const layer = findLayer(song, layerId);
-  if (!layer || notes.length === 0) return [];
-  const ids: string[] = [];
-  let end = 0;
-  commit((s) => {
-    let next = s;
-    notes.forEach((n, i) => {
-      let event: AnyEvent;
-      if (layer.type === 'single') {
-        event = createNoteEvent(clampMidi(n.midi), n.start, n.duration, n.velocity);
-      } else {
-        // On chord layers each hummed note is a chord change lasting until
-        // the next one (or a bar for the last).
-        const following = notes[i + 1];
-        const duration = following ? Math.max(eighthBeats(s.timeSignature), following.start - n.start) : chordDefaultDuration(s);
-        event = createSeedChord(clampMidi(n.midi), n.start, duration, n.velocity);
-      }
-      ids.push(event.id);
-      end = Math.max(end, event.start + event.duration);
-      next = addEvent(truncateChordsAt(next, layerId, event.start), layerId, event);
-    });
-    return next;
-  });
-  setCursor(end);
-  select(ids.length === 1 ? ids[0] : null);
-  return ids;
+  const layer = findAnyLayer(song, layerId);
+  if (!layer || layerKind(layer) !== 'notes' || notes.length === 0) return [];
+  const events = notes.map((n) => createNoteEvent(clampMidi(n.midi), n.start, n.duration, n.velocity));
+  commit((s) => events.reduce((next, event) => addEvent(next, layerId, event), s));
+  setCursor(Math.max(...events.map((e) => e.start + e.duration)));
+  select(events.length === 1 ? events[0].id : null);
+  return events.map((e) => e.id);
 }
 
 export function getSelectedEvent(): { layerId: string; event: AnyEvent } | null {
   const { song, view, selectedEventId } = useStore.getState();
-  if ((view.name !== 'layer' && view.name !== 'pianoLayer') || !selectedEventId) return null;
+  if (view.name !== 'layer' || !selectedEventId) return null;
   const layer = findAnyLayer(song, view.layerId);
   const event = (layer?.events as AnyEvent[] | undefined)?.find((e) => e.id === selectedEventId);
   return layer && event ? { layerId: layer.id, event } : null;
-}
-
-function editChord(layerId: string, chordId: string, fn: (c: ChordEvent) => ChordEvent, preview = true): void {
-  const { commit } = useStore.getState();
-  let result: ChordEvent | null = null;
-  commit((s) =>
-    updateEvent(s, layerId, chordId, (e) => {
-      if (e.kind !== 'chord') return e;
-      result = fn(e);
-      return result;
-    }),
-  );
-  if (preview && result) auditionChord(result);
 }
 
 function editNote(layerId: string, noteId: string, fn: (n: NoteEvent) => NoteEvent, preview = true): void {
@@ -160,40 +142,140 @@ function editNote(layerId: string, noteId: string, fn: (n: NoteEvent) => NoteEve
   }
 }
 
-export function makeChord(layerId: string, chordId: string, quality: ChordQuality): void {
-  editChord(layerId, chordId, (c) => buildChord(c, quality));
-}
-
-export function addToneToSelectedChord(layerId: string, chordId: string, midi: number): void {
-  editChord(layerId, chordId, (c) => addToneToChord(c, midi));
-}
-
-export function toggleStringMute(layerId: string, chordId: string, index: number): void {
-  editChord(layerId, chordId, (c) => relabelChord({ ...c, strings: setStringMuted(c.strings, index, !c.strings[index].muted) }));
-}
-
-export function shiftChordTone(layerId: string, chordId: string, index: number, delta: number): void {
-  editChord(layerId, chordId, (c) => relabelChord({ ...c, strings: shiftStringFret(c.strings, index, delta) }));
-}
-
-/** Cycle through the standard voicings for a major/minor chord. */
-export function cycleVoicing(layerId: string, chordId: string): void {
-  editChord(layerId, chordId, (c) => {
-    if (c.quality !== 'major' && c.quality !== 'minor') return c;
-    const options = voicingsFor(c.root, c.quality);
-    const current = options.findIndex((v) => v.every((s, i) => s.fret === c.strings[i].fret && s.muted === c.strings[i].muted));
-    const next = options[(current + 1) % options.length];
-    return { ...c, strings: next };
-  });
-}
-
-export function setChordPickPattern(layerId: string, chordId: string, pattern: number[] | null): void {
-  editChord(layerId, chordId, (c) => ({ ...c, pickPattern: pattern }), false);
-}
-
 export function shiftNotePitch(layerId: string, noteId: string, delta: number): void {
   editNote(layerId, noteId, (n) => ({ ...n, midi: clampMidi(n.midi + delta) }));
 }
+
+// ---- chords layers (guitar and piano) ----------------------------------------
+
+/**
+ * Add a chord picked from the key at the cursor, lasting a bar: a guitar
+ * chord in its default voicing, or piano keys. A chord already ringing at
+ * that point is lifted there, like moving your hands to the next chord.
+ * Returns the new event's id.
+ */
+export function addChordAtCursor(layerId: string, root: PitchClass, quality: ChordQuality): string | null {
+  const { song, cursorBeat, commit, setCursor, select } = useStore.getState();
+  const layer = findAnyLayer(song, layerId);
+  if (!layer || !isStyledLayer(layer)) return null;
+  const ts = song.timeSignature;
+  const start = snapToEighth(cursorBeat, ts);
+  const event: ChordEvent | PianoEvent =
+    layer.type === 'piano' ? createPianoChord(root, quality, start, ts.beatsPerBar) : createGuitarChord(root, quality, start, ts.beatsPerBar);
+  commit((s) => {
+    const lifted = updateAnyLayer(s, layerId, (l) => ({
+      ...l,
+      events: (l.events as AnyEvent[]).map((e) =>
+        e.start < start - 1e-6 && e.start + e.duration > start + 1e-6 ? { ...e, duration: Math.max(eighthBeats(ts), start - e.start) } : e,
+      ),
+    }));
+    return addEvent(lifted, layerId, event);
+  });
+  setCursor(start + event.duration);
+  select(event.id);
+  return event.id;
+}
+
+/**
+ * "Next chord": put the cursor where this chord ends and clear the
+ * selection, ready to add the next one. If it already runs to the end of the
+ * song there is no room left, so this is the user asking for another slot —
+ * the same explicit action as + Slot, never an automatic trailing bar.
+ */
+export function cursorAfterEvent(layerId: string, eventId: string): void {
+  const { song, setCursor, select } = useStore.getState();
+  const event = (findAnyLayer(song, layerId)?.events as AnyEvent[] | undefined)?.find((e) => e.id === eventId);
+  if (!event) return;
+  const end = event.start + event.duration;
+  if (end >= songBeats(song) - 1e-6) addTimelineSlot();
+  setCursor(end);
+  select(null);
+}
+
+function editChord(layerId: string, eventId: string, guitar: (c: ChordEvent) => ChordEvent, piano: (e: PianoEvent) => PianoEvent): void {
+  let changed = false;
+  useStore.getState().commit((s) =>
+    updateEvent(s, layerId, eventId, (e) => {
+      if (e.kind === 'chord') {
+        changed = true;
+        return guitar(e);
+      }
+      if (e.kind === 'piano') {
+        changed = true;
+        return piano(e);
+      }
+      return e;
+    }),
+  );
+  if (changed) auditionEvent(layerId, eventId);
+}
+
+/** Swap a chord to another standard chord (drops any wheel notes), keeping timing, feel and style. */
+export function changeChord(layerId: string, eventId: string, root: PitchClass, quality: ChordQuality): void {
+  editChord(layerId, eventId, (c) => setGuitarChord(c, root, quality), (e) => setPianoChord(e, root, quality));
+}
+
+/** Special-chord wheel: add a note to the chord, or take an added one away, and hear the result. */
+export function toggleChordNote(layerId: string, eventId: string, pc: PitchClass): void {
+  editChord(layerId, eventId, (c) => toggleGuitarChordNote(c, pc), (e) => togglePianoNote(e, pc));
+}
+
+/** Guitar only: step through the standard voicings (higher / lower on the neck). */
+export function cycleVoicing(layerId: string, chordId: string): void {
+  editChord(
+    layerId,
+    chordId,
+    (c) => {
+      if (c.quality !== 'major' && c.quality !== 'minor') return c;
+      const options = voicingsFor(c.root, c.quality);
+      const current = options.findIndex((v) => v.every((s, i) => s.fret === c.strings[i].fret && s.muted === c.strings[i].muted));
+      return { ...c, strings: options[(current + 1) % options.length] };
+    },
+    (e) => e,
+  );
+}
+
+/** A chords layer's default style: together (strum / one strike) or one note at a time (pick / arpeggio). */
+export function setChordLayerStyle(layerId: string, style: ChordStyle): void {
+  useStore.getState().commit((s) => setLayerStyle(s, layerId, style));
+}
+
+/** A chords layer's default pick / arpeggio pattern. */
+export function setChordLayerArp(layerId: string, arp: ArpPattern): void {
+  useStore.getState().commit((s) => setLayerArp(s, layerId, arp));
+}
+
+/** One chord's own style, or (null) back to the layer's. */
+export function setChordOverride(layerId: string, eventId: string, override: ChordStyleOverride | null): void {
+  useStore.getState().commit((s) => setChordStyleOverride(s, layerId, eventId, override));
+}
+
+export function setStrumSlot(layerId: string, index: number): void {
+  const { commit } = useStore.getState();
+  commit((s) =>
+    updateLayer(s, layerId, (layer) => {
+      if (layer.type !== 'chords') return layer;
+      const order = [null, 'down', 'up'] as const;
+      const current = layer.strumPattern[index];
+      const next = order[(order.indexOf(current) + 1) % order.length];
+      return { ...layer, strumPattern: layer.strumPattern.map((v, i) => (i === index ? next : v)) };
+    }),
+  );
+}
+
+// ---- drums ---------------------------------------------------------------------
+
+/** Tap a drum-grid cell: add a hit there (and hear it), or remove the one that is there. */
+export function toggleDrumCell(layerId: string, piece: DrumPiece, start: number): void {
+  const { song, commit } = useStore.getState();
+  const layer = song.drums.layers.find((l) => l.id === layerId);
+  if (!layer) return;
+  const adding = !drumHitAt(layer, piece, start);
+  commit((s) => toggleDrumHit(s, layerId, piece, start));
+  if (adding) auditionDrum(piece);
+}
+
+// ---- any event -------------------------------------------------------------------
 
 /** `coalesceKey` merges one continuous slider drag into a single undo step. */
 export function setEventVelocity(layerId: string, eventId: string, velocity: number, coalesceKey?: string): void {
@@ -273,100 +355,3 @@ export function addTimelineSlot(): void {
   commit((s) => ({ ...s, timelineBars: songBars(s) + 1 }));
   setCursor(nextBarStart);
 }
-
-export function setStrumSlot(layerId: string, index: number): void {
-  const { commit } = useStore.getState();
-  commit((s) =>
-    updateLayer(s, layerId, (layer) => {
-      if (layer.type !== 'strum') return layer;
-      const order = [null, 'down', 'up'] as const;
-      const current = layer.strumPattern[index];
-      const next = order[(order.indexOf(current) + 1) % order.length];
-      const strumPattern = layer.strumPattern.map((v, i) => (i === index ? next : v));
-      return { ...layer, strumPattern };
-    }),
-  );
-}
-
-export function setLayerPickPattern(layerId: string, pattern: number[]): void {
-  const { commit } = useStore.getState();
-  commit((s) => updateLayer(s, layerId, (layer) => (layer.type === 'picked' ? { ...layer, pickPattern: pattern } : layer)));
-}
-
-/** Play just the selected event so the user can judge it. */
-export function auditionEvent(event: AnyEvent, bpm: number): void {
-  if (event.kind === 'note') auditionNote(event.midi, event.velocity, beatsToSeconds(event.duration, bpm));
-  else if (event.kind === 'piano') auditionPianoChord(event, Math.min(PIANO_PREVIEW_MAX_SEC, beatsToSeconds(event.duration, bpm)));
-  else auditionChord(event, Math.min(2, beatsToSeconds(event.duration, bpm)));
-}
-
-// ---- piano ------------------------------------------------------------------
-
-/** Long enough to hear a sustain difference, short enough not to drag on. */
-const PIANO_PREVIEW_MAX_SEC = 4;
-
-/**
- * Add a standard chord at the cursor as one piano hit lasting a bar. A hit
- * already ringing at that point is lifted there, like moving your hands to
- * the next chord. Returns the new event's id.
- */
-export function addPianoChord(layerId: string, root: PitchClass, quality: ChordQuality): string | null {
-  const { song, cursorBeat, commit, setCursor, select } = useStore.getState();
-  if (!findPianoLayer(song, layerId)) return null;
-  const ts = song.timeSignature;
-  const start = snapToEighth(cursorBeat, ts);
-  const event = createPianoChord(root, quality, start, ts.beatsPerBar);
-  commit((s) => {
-    const lifted = updatePianoLayer(s, layerId, (layer) => ({
-      ...layer,
-      events: layer.events.map((e) =>
-        e.start < start - 1e-6 && e.start + e.duration > start + 1e-6 ? { ...e, duration: Math.max(eighthBeats(ts), start - e.start) } : e,
-      ),
-    }));
-    return addEvent(lifted, layerId, event);
-  });
-  setCursor(start + event.duration);
-  select(event.id);
-  return event.id;
-}
-
-/**
- * "Next chord": put the cursor where this hit ends and clear the selection,
- * ready to add the next one. If the hit already runs to the end of the song
- * there is no room left, so this is the user asking for another slot — the
- * same explicit action as + Slot, never an automatic trailing bar.
- */
-export function cursorAfterEvent(layerId: string, eventId: string): void {
-  const { song, setCursor, select } = useStore.getState();
-  const event = findPianoLayer(song, layerId)?.events.find((e) => e.id === eventId);
-  if (!event) return;
-  const end = event.start + event.duration;
-  if (end >= songBeats(song) - 1e-6) addTimelineSlot();
-  setCursor(end);
-  select(null);
-}
-
-function editPianoChord(layerId: string, eventId: string, fn: (e: PianoEvent) => PianoEvent): void {
-  const { commit, song } = useStore.getState();
-  let result: PianoEvent | null = null;
-  commit((s) =>
-    updateEvent(s, layerId, eventId, (e) => {
-      if (e.kind !== 'piano') return e;
-      result = fn(e);
-      return result;
-    }),
-  );
-  if (result) auditionEvent(result, song.bpm);
-}
-
-/** Swap a hit to another standard chord (drops any wheel notes). */
-export function changePianoChord(layerId: string, eventId: string, root: PitchClass, quality: ChordQuality): void {
-  editPianoChord(layerId, eventId, (e) => setPianoChord(e, root, quality));
-}
-
-/** Note wheel: add a pitch to the chord, or take an added one away, and hear the result. */
-export function togglePianoChordNote(layerId: string, eventId: string, pc: PitchClass): void {
-  editPianoChord(layerId, eventId, (e) => togglePianoNote(e, pc));
-}
-
-export { isChordLayer };

@@ -5,21 +5,20 @@ import { chordName } from '../src/model/music';
 import {
   createPianoChord,
   createPianoLayer,
-  duplicatePianoLayer,
-  pianoAddedPitchClasses,
-  pianoChordName,
+  addedPitchClasses,
+  chordShapeName,
   pianoChordNotes,
-  pianoPalette,
+  keyChordPalette,
   setPianoChord,
   togglePianoNote,
 } from '../src/model/piano';
 import { isPristineSong, type ProjectRecord } from '../src/model/projects';
 import {
   addEvent,
+  duplicateLayer,
   appendLayer,
-  buildChord,
+  createGuitarChord,
   createLayer,
-  createSeedChord,
   createSong,
   findPianoLayer,
   removeLayer,
@@ -40,17 +39,17 @@ import * as engine from '../src/audio/engine';
 const audio = engine.initAudioEngine(() => ({ noteOn() {}, allNotesOff() {} }));
 const play = vi.spyOn(audio, 'play').mockResolvedValue();
 import {
-  addPianoChord,
-  changePianoChord,
+  addChordAtCursor,
+  changeChord,
   cursorAfterEvent,
   deleteEvent,
   moveEvent,
   setEventDuration,
   setEventVelocity,
-  togglePianoChordNote,
+  toggleChordNote,
 } from '../src/state/actions';
 
-const names = (song: Song) => pianoPalette(song).chords.map((c) => chordName(c.root, c.quality));
+const names = (song: Song) => keyChordPalette(song).chords.map((c) => chordName(c.root, c.quality));
 
 function songWithPianoLayer(): { song: Song; layerId: string } {
   const song = createSong();
@@ -62,7 +61,7 @@ describe('piano palette: the chords that belong to the key', () => {
   it('lists the diatonic major/minor chords of a manual key, without the diminished chord', () => {
     const song = setManualKey(createSong(), { tonic: 0, quality: 'major' });
     expect(names(song)).toEqual(['C', 'Dm', 'Em', 'F', 'G', 'Am']);
-    expect(pianoPalette(song).guessed).toBe(false);
+    expect(keyChordPalette(song).guessed).toBe(false);
   });
 
   it('works for other keys, major and minor', () => {
@@ -72,8 +71,8 @@ describe('piano palette: the chords that belong to the key', () => {
 
   it('Auto with nothing committed starts from C major, or A minor when the toggle says minor', () => {
     const song = createSong();
-    expect(pianoPalette(song).key).toEqual({ tonic: 0, quality: 'major' });
-    expect(pianoPalette(song).guessed).toBe(true);
+    expect(keyChordPalette(song).key).toEqual({ tonic: 0, quality: 'major' });
+    expect(keyChordPalette(song).guessed).toBe(true);
     expect(names(setKeyTonality(song, 'minor'))[0]).toBe('Am');
   });
 
@@ -82,7 +81,7 @@ describe('piano palette: the chords that belong to the key', () => {
     song = addEvent(song, layerId, createPianoChord(2, 'major', 0, 4)); // D F# A
     song = addEvent(song, layerId, createPianoChord(7, 'major', 4, 4)); // G B D
     song = addEvent(song, layerId, createPianoChord(9, 'major', 8, 4)); // A C# E
-    const palette = pianoPalette(song);
+    const palette = keyChordPalette(song);
     expect(palette.guessed).toBe(false);
     expect(palette.key).toEqual({ tonic: 2, quality: 'major' });
 
@@ -105,10 +104,10 @@ describe('piano chords are real notes', () => {
     const dMaj7 = togglePianoNote(d, 1); // C#
     expect(dMaj7.notes).toEqual([62, 66, 69, 73]); // D F# A C#
     expect(dMaj7.notes.slice(0, 3)).toEqual(d.notes);
-    expect(pianoAddedPitchClasses(dMaj7)).toEqual([1]);
+    expect(addedPitchClasses(dMaj7)).toEqual([1]);
     expect(dMaj7.root).toBe(2);
     expect(dMaj7.quality).toBe('major');
-    expect(pianoChordName(dMaj7)).toBe('Dmaj7');
+    expect(chordShapeName(dMaj7)).toBe('Dmaj7');
   });
 
   it('toggling an added note removes it again; chord tones are never removed', () => {
@@ -120,12 +119,12 @@ describe('piano chords are real notes', () => {
 
   it('names common extensions and falls back to plain notes otherwise', () => {
     const am = createPianoChord(9, 'minor', 0, 4);
-    expect(pianoChordName(am)).toBe('Am');
-    expect(pianoChordName(togglePianoNote(am, 7))).toBe('Am7');
+    expect(chordShapeName(am)).toBe('Am');
+    expect(chordShapeName(togglePianoNote(am, 7))).toBe('Am7');
     const c = createPianoChord(0, 'major', 0, 4);
-    expect(pianoChordName(togglePianoNote(c, 2))).toBe('Cadd9');
-    expect(pianoChordName(togglePianoNote(togglePianoNote(c, 10), 2))).toBe('C9');
-    expect(pianoChordName(togglePianoNote(c, 6))).toBe('C + F#');
+    expect(chordShapeName(togglePianoNote(c, 2))).toBe('Cadd9');
+    expect(chordShapeName(togglePianoNote(togglePianoNote(c, 10), 2))).toBe('C9');
+    expect(chordShapeName(togglePianoNote(c, 6))).toBe('C + F#');
   });
 
   it('changing the chord keeps timing and feel but starts from the plain chord', () => {
@@ -154,9 +153,9 @@ describe('piano in the song', () => {
   it('layers can be muted, removed and duplicated independently', () => {
     let { song, layerId } = songWithPianoLayer();
     song = addEvent(song, layerId, createPianoChord(0, 'major', 0, 4));
-    song = duplicatePianoLayer(song, layerId);
+    song = duplicateLayer(song, layerId);
     const [a, b] = song.piano.layers;
-    expect(b.name).toBe('Piano 2');
+    expect(b.name).toBe('Piano Chords 2');
     expect(b.id).not.toBe(a.id);
     expect(b.events[0].id).not.toBe(a.events[0].id);
     expect(b.events[0].notes).toEqual(a.events[0].notes);
@@ -184,9 +183,9 @@ describe('piano playback rendering', () => {
 
   it('plays alongside guitar and respects layer mute', () => {
     let song = createSong();
-    const guitar = createLayer('strum', song);
+    const guitar = createLayer('chords', song);
     song = appendLayer(song, guitar);
-    song = addEvent(song, guitar.id, buildChord(createSeedChord(57, 0, 4), 'minor'));
+    song = addEvent(song, guitar.id, createGuitarChord(9, 'minor', 0, 4));
     const piano = createPianoLayer(song);
     song = appendLayer(song, piano);
     song = addEvent(song, piano.id, createPianoChord(9, 'minor', 0, 4));
@@ -217,7 +216,7 @@ describe('piano editing with undo / redo', () => {
 
   it('adds a chord a bar long at the cursor and selects it; Next chord goes after it', () => {
     const layerId = openPianoLayer();
-    const id = addPianoChord(layerId, 0, 'major')!;
+    const id = addChordAtCursor(layerId, 0, 'major')!;
     expect(event(layerId, id)).toMatchObject({ notes: [60, 64, 67], start: 0, duration: 4 });
     expect(useStore.getState().selectedEventId).toBe(id);
 
@@ -226,7 +225,7 @@ describe('piano editing with undo / redo', () => {
     expect(useStore.getState().song.timelineBars).toBe(2);
     expect(useStore.getState().cursorBeat).toBe(4);
     expect(useStore.getState().selectedEventId).toBeNull();
-    const next = addPianoChord(layerId, 7, 'major')!;
+    const next = addChordAtCursor(layerId, 7, 'major')!;
     expect(event(layerId, next).start).toBe(4);
     expect(event(layerId, id).duration).toBe(4);
 
@@ -239,9 +238,9 @@ describe('piano editing with undo / redo', () => {
 
   it('a new chord inside a ringing one lifts the earlier keys there', () => {
     const layerId = openPianoLayer();
-    const first = addPianoChord(layerId, 0, 'major')!;
+    const first = addChordAtCursor(layerId, 0, 'major')!;
     useStore.getState().setCursor(2);
-    addPianoChord(layerId, 5, 'major');
+    addChordAtCursor(layerId, 5, 'major');
     expect(event(layerId, first).duration).toBe(2);
     useStore.getState().undo();
     expect(event(layerId, first).duration).toBe(4);
@@ -249,10 +248,10 @@ describe('piano editing with undo / redo', () => {
 
   it('undoes and redoes wheel notes, chord changes, moves and deletes', () => {
     const layerId = openPianoLayer();
-    const id = addPianoChord(layerId, 2, 'major')!;
+    const id = addChordAtCursor(layerId, 2, 'major')!;
 
     play.mockClear();
-    togglePianoChordNote(layerId, id, 1);
+    toggleChordNote(layerId, id, 1);
     expect(event(layerId, id).notes).toEqual([62, 66, 69, 73]);
     // The edit is heard straight away, all notes together (no strum offset).
     expect(play.mock.calls.map(([midi]) => midi)).toEqual([62, 66, 69, 73]);
@@ -263,15 +262,15 @@ describe('piano editing with undo / redo', () => {
     useStore.getState().redo();
     expect(event(layerId, id).notes).toEqual([62, 66, 69, 73]);
 
-    togglePianoChordNote(layerId, id, 1);
+    toggleChordNote(layerId, id, 1);
     expect(event(layerId, id).notes).toEqual([62, 66, 69]);
     useStore.getState().undo();
     expect(event(layerId, id).notes).toEqual([62, 66, 69, 73]);
 
-    changePianoChord(layerId, id, 11, 'minor');
+    changeChord(layerId, id, 11, 'minor');
     expect(event(layerId, id)).toMatchObject({ root: 11, quality: 'minor', notes: [59, 62, 66] });
     useStore.getState().undo();
-    expect(pianoChordName(event(layerId, id))).toBe('Dmaj7');
+    expect(chordShapeName(event(layerId, id))).toBe('Dmaj7');
 
     moveEvent(layerId, id, 2);
     expect(event(layerId, id).start).toBe(2);
@@ -286,7 +285,7 @@ describe('piano editing with undo / redo', () => {
 
   it('a velocity or sustain drag is one undo step; separate drags are separate steps', () => {
     const layerId = openPianoLayer();
-    const id = addPianoChord(layerId, 0, 'major')!;
+    const id = addChordAtCursor(layerId, 0, 'major')!;
     const before = useStore.getState().past.length;
 
     for (const v of [0.7, 0.6, 0.5, 0.4]) setEventVelocity(layerId, id, v, 'vel:1');
@@ -312,7 +311,7 @@ describe('piano editing with undo / redo', () => {
 
   it('sustain never goes below one eighth-note step', () => {
     const layerId = openPianoLayer();
-    const id = addPianoChord(layerId, 0, 'major')!;
+    const id = addChordAtCursor(layerId, 0, 'major')!;
     setEventDuration(layerId, id, 0);
     expect(event(layerId, id).duration).toBe(0.5);
   });
@@ -348,9 +347,9 @@ describe('piano persistence', () => {
 
   it('loads songs saved before Piano existed with an empty piano section', async () => {
     let song = createSong();
-    const guitar = createLayer('strum', song);
+    const guitar = createLayer('chords', song);
     song = appendLayer(song, guitar);
-    song = addEvent(song, guitar.id, buildChord(createSeedChord(57, 0, 4), 'minor'));
+    song = addEvent(song, guitar.id, createGuitarChord(9, 'minor', 0, 4));
     const { piano: _dropped, ...old } = song;
     await storage.set('quicksong:project:v1:proj_old', record(old as Song, 'proj_old'));
     await storage.set('quicksong:projects:v1', [{ id: 'proj_old', name: 'Piano song', createdAt: 1, updatedAt: 1 }]);

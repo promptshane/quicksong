@@ -1,6 +1,10 @@
-import { activeStringNumbers, soundingNotes, stringIndex, stringMidi } from '../model/chords';
+import { arpSteps, effectiveStyle } from '../model/arpeggio';
+import { soundingNotes } from '../model/chords';
+import { DRUM_MIDI } from '../model/drums';
+import { eventPitches } from '../model/song';
 import { eighthBeats, songBeats } from '../model/time';
-import type { ChordEvent, PianoEvent, PianoLayer, PickedLayer, Song, StrumLayer } from '../model/types';
+import type { ChordEvent, GuitarChordLayer, PianoEvent, PianoLayer, Song } from '../model/types';
+import type { InstrumentKind } from './engine';
 
 /**
  * A single note to play, in song time. Produced by `renderSong` — the pure
@@ -20,29 +24,31 @@ export interface ScheduledNote {
   offsetSec: number;
   /** Layer gain, 0..1. */
   gain: number;
+  instrument: InstrumentKind;
 }
 
 const STRUM_STAGGER_SEC = 0.014;
 const UP_STRUM_VELOCITY = 0.8;
 
-function chordAt(events: ChordEvent[], beat: number): ChordEvent | undefined {
-  return events.find((c) => beat >= c.start - 1e-6 && beat < c.start + c.duration - 1e-6);
+type Emit = (n: Omit<ScheduledNote, 'layerId' | 'gain' | 'instrument'>) => void;
+
+function emitter(layer: { id: string; muted: boolean; volume: number }, out: ScheduledNote[], instrument: InstrumentKind = 'melodic'): Emit {
+  const gain = layer.muted ? 0 : layer.volume;
+  return (n) => out.push({ ...n, layerId: layer.id, gain, instrument });
 }
 
-function renderStrumLayer(song: Song, layer: StrumLayer, out: ScheduledNote[]): void {
-  const ts = song.timeSignature;
-  const step = eighthBeats(ts);
+/** Guitar chords played together: strummed on the layer's strum pattern. */
+function renderStrums(song: Song, layer: GuitarChordLayer, chords: ChordEvent[], emit: Emit): void {
+  const step = eighthBeats(song.timeSignature);
   const slotsPerBar = layer.strumPattern.length;
   const totalSlots = Math.ceil(songBeats(song) / step);
-  const gain = layer.muted ? 0 : layer.volume;
-
   const slotHasStrum = (slot: number) => layer.strumPattern[slot % slotsPerBar] != null;
 
   for (let slot = 0; slot < totalSlots; slot++) {
     const kind = layer.strumPattern[slot % slotsPerBar];
     if (!kind) continue;
     const beat = slot * step;
-    const chord = chordAt(layer.events, beat);
+    const chord = chords.find((c) => beat >= c.start - 1e-6 && beat < c.start + c.duration - 1e-6);
     if (!chord) continue;
 
     // Ring until the next strum inside this chord, or the chord's end.
@@ -55,81 +61,58 @@ function renderStrumLayer(song: Song, layer: StrumLayer, out: ScheduledNote[]): 
     const ordered = kind === 'down' ? notes : [...notes].reverse();
     const velocity = chord.velocity * (kind === 'up' ? UP_STRUM_VELOCITY : 1);
     ordered.forEach((n, i) => {
-      out.push({
-        layerId: layer.id,
-        eventId: chord.id,
-        midi: n.midi,
-        velocity,
-        beat,
-        durationBeats,
-        offsetSec: i * STRUM_STAGGER_SEC,
-        gain,
-      });
+      emit({ eventId: chord.id, midi: n.midi, velocity, beat, durationBeats, offsetSec: i * STRUM_STAGGER_SEC });
     });
   }
 }
 
-/** Resolve a requested string number to one that sounds in the chord. */
-export function resolvePickString(chord: ChordEvent, wanted: number): number | null {
-  const active = activeStringNumbers(chord);
-  if (active.length === 0) return null;
-  if (active.includes(wanted)) return wanted;
-  // Nearest sounding string, preferring the lower (higher-numbered) one on ties.
-  return active.reduce((best, s) => {
-    const d = Math.abs(s - wanted);
-    const bd = Math.abs(best - wanted);
-    if (d < bd) return s;
-    if (d === bd && s > best) return s;
-    return best;
-  });
-}
-
-function renderPickedLayer(song: Song, layer: PickedLayer, out: ScheduledNote[]): void {
+/**
+ * One chord played a note at a time (guitar picking, piano arpeggio): the
+ * bar-long pattern repeats, aligned to the bar, for as long as the chord
+ * lasts. Each note rings until the chord ends (at most a bar), like a held
+ * pedal or a let-ring pick.
+ */
+function renderArpeggio(song: Song, chord: ChordEvent | PianoEvent, arp: GuitarChordLayer['arp'], emit: Emit): void {
   const ts = song.timeSignature;
-  const gain = layer.muted ? 0 : layer.volume;
-  for (const chord of layer.events) {
-    const pattern = chord.pickPattern ?? layer.pickPattern;
-    if (pattern.length === 0) continue;
-    const firstBeat = Math.ceil(chord.start - 1e-6);
-    const endBeat = chord.start + chord.duration;
-    for (let beat = firstBeat; beat < endBeat - 1e-6; beat++) {
-      const beatInBar = ((beat % ts.beatsPerBar) + ts.beatsPerBar) % ts.beatsPerBar;
-      const wanted = pattern[beatInBar % pattern.length];
-      const stringNum = resolvePickString(chord, wanted);
-      if (stringNum == null) continue;
-      const idx = stringIndex(stringNum);
-      out.push({
-        layerId: layer.id,
-        eventId: chord.id,
-        midi: stringMidi(idx, chord.strings[idx]),
-        velocity: chord.velocity,
-        beat,
-        durationBeats: Math.min(endBeat - beat, 2),
-        offsetSec: 0,
-        gain,
-      });
+  const step = eighthBeats(ts);
+  const tones = [...eventPitches(chord)].sort((a, b) => a - b);
+  if (tones.length === 0) return;
+  const steps = arpSteps(arp, tones.length, ts);
+  const end = chord.start + chord.duration;
+  const first = Math.ceil(chord.start / step - 1e-6) || 0; // never -0
+  for (let slot = first; slot * step < end - 1e-6; slot++) {
+    const beat = slot * step;
+    const slotInBar = Math.round((((beat % ts.beatsPerBar) + ts.beatsPerBar) % ts.beatsPerBar) / step) % steps.length;
+    const picked = new Set(steps[slotInBar].map((t) => tones[Math.min(t, tones.length - 1)]));
+    for (const midi of picked) {
+      emit({ eventId: chord.id, midi, velocity: chord.velocity, beat, durationBeats: Math.min(end - beat, ts.beatsPerBar), offsetSec: 0 });
     }
   }
 }
 
+function renderGuitarChords(song: Song, layer: GuitarChordLayer, emit: Emit): void {
+  const together: ChordEvent[] = [];
+  for (const chord of layer.events) {
+    const style = effectiveStyle(layer, chord);
+    if (style.style === 'together') together.push(chord);
+    else renderArpeggio(song, chord, style.arp, emit);
+  }
+  renderStrums(song, layer, together, emit);
+}
+
 /**
- * Piano hits are struck, not strummed: every key of a chord starts at the
- * same instant and is held for the event's duration (its sustain).
+ * Piano chords played together are struck, not strummed: every key starts at
+ * the same instant and is held for the event's duration (its sustain).
  */
-function renderPianoLayer(layer: PianoLayer, out: ScheduledNote[]): void {
-  const gain = layer.muted ? 0 : layer.volume;
+function renderPianoChords(song: Song, layer: PianoLayer, emit: Emit): void {
   for (const ev of layer.events) {
+    const style = effectiveStyle(layer, ev);
+    if (style.style === 'arpeggio') {
+      renderArpeggio(song, ev, style.arp, emit);
+      continue;
+    }
     for (const midi of ev.notes) {
-      out.push({
-        layerId: layer.id,
-        eventId: ev.id,
-        midi,
-        velocity: ev.velocity,
-        beat: ev.start,
-        durationBeats: ev.duration,
-        offsetSec: 0,
-        gain,
-      });
+      emit({ eventId: ev.id, midi, velocity: ev.velocity, beat: ev.start, durationBeats: ev.duration, offsetSec: 0 });
     }
   }
 }
@@ -137,32 +120,36 @@ function renderPianoLayer(layer: PianoLayer, out: ScheduledNote[]): void {
 /** Flatten the whole song into notes, sorted by time. */
 export function renderSong(song: Song): ScheduledNote[] {
   const out: ScheduledNote[] = [];
-  for (const layer of song.guitar.layers) {
-    if (layer.type === 'single') {
-      const gain = layer.muted ? 0 : layer.volume;
+  for (const layer of [...song.guitar.layers, ...song.piano.layers]) {
+    const emit = emitter(layer, out);
+    if (layer.type === 'chords') renderGuitarChords(song, layer, emit);
+    else if (layer.type === 'piano') renderPianoChords(song, layer, emit);
+    else {
       for (const ev of layer.events) {
-        out.push({
-          layerId: layer.id,
-          eventId: ev.id,
-          midi: ev.midi,
-          velocity: ev.velocity,
-          beat: ev.start,
-          durationBeats: ev.duration,
-          offsetSec: 0,
-          gain,
-        });
+        emit({ eventId: ev.id, midi: ev.midi, velocity: ev.velocity, beat: ev.start, durationBeats: ev.duration, offsetSec: 0 });
       }
-    } else if (layer.type === 'strum') {
-      renderStrumLayer(song, layer, out);
-    } else {
-      renderPickedLayer(song, layer, out);
     }
   }
-  for (const layer of song.piano.layers) renderPianoLayer(layer, out);
+  for (const layer of song.drums.layers) {
+    const emit = emitter(layer, out, 'drums');
+    for (const hit of layer.events) {
+      emit({ eventId: hit.id, midi: DRUM_MIDI[hit.piece], velocity: hit.velocity, beat: hit.start, durationBeats: hit.duration, offsetSec: 0 });
+    }
+  }
   return out.sort((a, b) => a.beat - b.beat || a.offsetSec - b.offsetSec);
 }
 
-/** Notes to play when previewing one chord on its own (a quick down-strum). */
+/**
+ * One event exactly as it will play in the song (strum pattern, arpeggio,
+ * sustain), for auditioning it on its own. Beats are relative to the event.
+ */
+export function renderEvent(song: Song, layerId: string, eventId: string): ScheduledNote[] {
+  const notes = renderSong(song).filter((n) => n.layerId === layerId && n.eventId === eventId);
+  const first = notes.reduce((min, n) => Math.min(min, n.beat), Infinity);
+  return notes.map((n) => ({ ...n, beat: n.beat - first }));
+}
+
+/** Notes to play when previewing one guitar chord on its own (a quick down-strum). */
 export function renderChordPreview(chord: ChordEvent): { midi: number; offsetSec: number }[] {
   return soundingNotes(chord.strings).map((n, i) => ({ midi: n.midi, offsetSec: i * STRUM_STAGGER_SEC }));
 }

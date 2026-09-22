@@ -1794,3 +1794,116 @@ input[type='range'] {
   pointer-events: none;
   z-index: 2;
 }
+
+/* ---- drums ---------------------------------------------------------------- */
+
+.timeline-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.drum-row-labels {
+  position: absolute;
+  left: 0;
+  top: 41px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+}
+.drum-row-labels span {
+  display: flex;
+  align-items: center;
+  width: 56px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  background: var(--bg-2);
+}
+/* The drum grid starts to the right of the row names. */
+.timeline-wrap.drums .timeline-inner {
+  margin-left: 60px;
+}
+.drum-cell {
+  position: absolute;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  touch-action: pan-x;
+  -webkit-touch-callout: none;
+}
+.drum-cell.on-beat {
+  background: rgba(255, 255, 255, 0.08);
+}
+.drum-cell.on {
+  background: var(--text);
+}
+.drum-pads {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.drum-pad {
+  min-height: 56px;
+}
+.overview .clip.drum {
+  background: var(--text-dim);
+}
+.overview .clip.hit.drum {
+  background: transparent;
+}
+.overview .clip.hit.drum {
+  color: var(--text-dim);
+}
+
+/* ---- picking / arpeggio pattern ------------------------------------------ */
+
+.arp-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.arp-presets {
+  grid-template-columns: repeat(2, 1fr);
+}
+.arp-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow-x: auto;
+}
+.arp-row {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+.arp-note {
+  width: 34px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: right;
+  padding-right: 4px;
+}
+.arp-cell {
+  flex: 1;
+  min-width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--bg-3);
+}
+.arp-cell.on {
+  background: var(--accent);
+}
+.arp-cell.group-start,
+.arp-count.group-start {
+  margin-left: 5px;
+}
+.arp-count {
+  flex: 1;
+  min-width: 26px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-faint);
+}

@@ -3,8 +3,10 @@ import { transport } from './audio/transport';
 import { useStore } from './state/store';
 import { InstrumentFocus } from './ui/InstrumentFocus';
 import { HomeScreen } from './ui/HomeScreen';
-import { LayerEditor } from './ui/LayerEditor';
-import { PianoLayerEditor } from './ui/PianoLayerEditor';
+import { findAnyLayer, layerInstrument, layerKind, type InstrumentId, type LayerKind } from './model/song';
+import { ChordsEditor } from './ui/ChordsEditor';
+import { DrumsEditor } from './ui/DrumsEditor';
+import { NotesEditor } from './ui/NotesEditor';
 import { ProjectsScreen } from './ui/ProjectsScreen';
 import { ToastHost } from './ui/Toast';
 
@@ -40,9 +42,8 @@ export function App() {
   let screen;
   if (view.name === 'projects') screen = <ProjectsScreen />;
   else if (view.name === 'home') screen = <HomeScreen />;
-  else if (view.name === 'guitar' || view.name === 'piano') screen = <InstrumentFocus instrument={view.name} />;
-  else if (view.name === 'pianoLayer') screen = <PianoLayerEditor layerId={view.layerId} />;
-  else screen = <LayerEditor layerId={view.layerId} />;
+  else if (view.name === 'guitar' || view.name === 'piano' || view.name === 'drums') screen = <InstrumentFocus instrument={view.name} />;
+  else screen = <LayerScreen key={view.layerId} layerId={view.layerId} opened={view} />;
 
   return (
     <>
@@ -58,4 +59,19 @@ export function App() {
       )}
     </>
   );
+}
+
+/**
+ * One layer's editor, chosen by what the layer holds. If the layer disappears
+ * (Undo of adding it), the editor for the kind it was opened as sends the user
+ * back to its instrument page.
+ */
+function LayerScreen({ layerId, opened }: { layerId: string; opened: { kind?: LayerKind; instrument?: InstrumentId } }) {
+  const layer = useStore((s) => findAnyLayer(s.song, layerId));
+  const kind = layer ? layerKind(layer) : (opened.kind ?? 'notes');
+  const instrument = layer ? layerInstrument(layer) : (opened.instrument ?? 'guitar');
+  if (kind === 'drums') return <DrumsEditor layerId={layerId} />;
+  const pitched = instrument === 'piano' ? 'piano' : 'guitar';
+  if (kind === 'chords') return <ChordsEditor layerId={layerId} instrument={pitched} />;
+  return <NotesEditor layerId={layerId} instrument={pitched} />;
 }

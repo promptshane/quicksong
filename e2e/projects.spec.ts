@@ -166,7 +166,7 @@ test('projects keep independent songs and undo survives autosave', async ({ page
   await page.getByRole('button', { name: 'Done' }).click();
   await page.getByRole('button', { name: 'Guitar' }).click();
   await page.getByTestId('add-layer').click();
-  await page.locator('[data-layer-type="single"]').click();
+  await page.locator('[data-layer-kind="notes"]').click();
   await page.getByTestId('record').click();
   await page.locator('.key[data-midi="48"]').dispatchEvent('pointerdown');
   await expect(page.locator('.block.note')).toHaveCount(1);
@@ -194,7 +194,7 @@ test('projects keep independent songs and undo survives autosave', async ({ page
   await expect(page.locator('[data-instrument="guitar"] .overview .clip')).toHaveCount(0);
   await page.getByRole('button', { name: 'Guitar' }).click();
   await page.getByTestId('add-layer').click();
-  await page.locator('[data-layer-type="strum"]').click();
+  await page.locator('[data-layer-kind="chords"]').click();
   await page.getByTestId('undo').click(); // removes B's layer only, back on the Guitar page
   await expect(page.locator('[data-screen="guitar"]')).toBeVisible();
   await expect(page.locator('.layer-card')).toHaveCount(0);
@@ -213,7 +213,7 @@ test('project play control previews and loops without opening the project', asyn
   await page.getByTestId('new-project').click();
   await page.getByRole('button', { name: 'Guitar' }).click();
   await page.getByTestId('add-layer').click();
-  await page.locator('[data-layer-type="single"]').click();
+  await page.locator('[data-layer-kind="notes"]').click();
   await page.getByTestId('record').click();
   await page.locator('.key[data-midi="48"]').dispatchEvent('pointerdown');
   await page.getByRole('button', { name: 'Back to guitar' }).click();

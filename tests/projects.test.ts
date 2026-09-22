@@ -8,7 +8,13 @@ import {
   normalizeProjectName,
   uniqueProjectName,
 } from '../src/model/projects';
-import { addEvent, buildChord, createLayer, createSeedChord, createSong, findLayer } from '../src/model/song';
+import {
+  addEvent,
+  createGuitarChord,
+  createLayer,
+  createSong,
+  findLayer,
+} from '../src/model/song';
 import type { ProjectRecord } from '../src/model/projects';
 import type { Song } from '../src/model/types';
 import {
@@ -26,16 +32,16 @@ import { hydrateStore, useStore } from '../src/state/store';
 // Editing actions talk to the audio engine for previews; stub it out.
 import * as engine from '../src/audio/engine';
 engine.initAudioEngine(() => ({ noteOn() {}, allNotesOff() {} }));
-import { deleteEvent, insertAtCursor, makeChord } from '../src/state/actions';
+import { addChordAtCursor, deleteEvent, insertAtCursor } from '../src/state/actions';
 
 const LEGACY_KEY = 'quicksong:song:v1';
 const INDEX_KEY = 'quicksong:projects:v1';
 
 function songWithChord(): Song {
   let song = createSong();
-  const layer = createLayer('strum', song);
+  const layer = createLayer('chords', song);
   song = { ...song, guitar: { layers: [layer] } };
-  return addEvent(song, layer.id, buildChord(createSeedChord(57, 0, 4), 'minor'));
+  return addEvent(song, layer.id, createGuitarChord(9, 'minor', 0, 4));
 }
 
 let storage = memoryStorage();
@@ -272,11 +278,10 @@ describe('project lifecycle in the store', () => {
   it('autosave never touches undo/redo: delete, save, undo restores the chord', async () => {
     await hydrateStore();
     const id = await useStore.getState().createProject();
-    const layer = createLayer('strum', useStore.getState().song);
+    const layer = createLayer('chords', useStore.getState().song);
     useStore.getState().commit((s) => ({ ...s, guitar: { layers: [layer] } }));
     useStore.getState().setView({ name: 'layer', layerId: layer.id });
-    const chordId = insertAtCursor(layer.id, 57)!;
-    makeChord(layer.id, chordId, 'minor');
+    const chordId = addChordAtCursor(layer.id, 9, 'minor')!;
     await settleAutosave();
     const depth = useStore.getState().past.length;
 
@@ -367,7 +372,7 @@ describe('project lifecycle in the store', () => {
   it('duplicate makes an independent project and stays on Projects', async () => {
     await hydrateStore();
     const id = await useStore.getState().createProject();
-    const layer = createLayer('strum', useStore.getState().song);
+    const layer = createLayer('chords', useStore.getState().song);
     useStore.getState().commit((s) => ({ ...s, guitar: { layers: [layer] } }));
     await useStore.getState().renameProject(id, 'Song');
     await useStore.getState().closeProject();

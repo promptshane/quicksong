@@ -25,10 +25,17 @@ async function openGuitar(page: Page) {
   await expect(page.locator('[data-screen="guitar"]')).toBeVisible();
 }
 
-async function addLayer(page: Page, type: 'strum' | 'picked' | 'single') {
+async function addLayer(page: Page, kind: 'chords' | 'single') {
   await page.getByTestId('add-layer').click();
-  await page.locator(`[data-layer-type="${type}"]`).click();
-  await expect(page.locator(`[data-screen="layer"][data-layer-type="${type}"]`)).toBeVisible();
+  await page.locator(`[data-layer-kind="${kind === 'single' ? 'notes' : 'chords'}"]`).click();
+  await expect(page.locator(`[data-screen="layer"][data-layer-type="${kind}"]`)).toBeVisible();
+}
+
+/** Pick a chord from the key palette and add it at the cursor. */
+async function addChord(page: Page, name: string) {
+  await page.locator(`.palette-chord[data-chord="${name}"]`).click();
+  await page.getByTestId('add-chord').click();
+  await expect(page.getByTestId('chord-name')).toHaveText(name);
 }
 
 async function recordOn(page: Page) {
@@ -74,8 +81,8 @@ test('loads with valid PWA metadata at iPhone width', async ({ page }) => {
 
   // Five instrument rows; guitar and piano are enabled.
   await expect(page.locator('.row')).toHaveCount(5);
-  await expect(page.locator('.row.locked')).toHaveCount(3);
-  await expect(page.locator('.row[data-instrument="piano"]')).not.toHaveClass(/locked/);
+  await expect(page.locator('.row.locked')).toHaveCount(2); // bass, vocals
+  for (const inst of ['drums', 'guitar', 'piano']) await expect(page.locator(`.row[data-instrument="${inst}"]`)).not.toHaveClass(/locked/);
 });
 
 test('metronome toggles from the Tempo sheet and shows on the BPM chip', async ({ page }) => {
@@ -135,15 +142,12 @@ test('song settings: BPM, time signature and key', async ({ page }) => {
 
 test('Key panel: circle of fifths follows committed chords and Auto preferences', async ({ page }) => {
   await openGuitar(page);
-  await addLayer(page, 'strum');
-  await recordOn(page);
+  await addLayer(page, 'chords');
   // A full-bar C chord then a shorter G: C major inferred, G major still plausible.
-  await tapKey(page, 60);
-  await page.getByTestId('make-major').click();
-  await tapKey(page, 55);
-  await page.getByTestId('make-major').click();
-  await page.getByRole('button', { name: 'Shorter' }).click();
-  await page.getByRole('button', { name: 'Shorter' }).click();
+  await addChord(page, 'C');
+  await page.getByTestId('next-chord').click();
+  await addChord(page, 'G');
+  await page.getByTestId('chord-length').fill('3');
   await page.getByRole('button', { name: 'Back to guitar' }).click();
   await page.getByRole('button', { name: 'Back to song' }).click();
   await expect(page.getByRole('button', { name: 'Key', exact: true })).toContainText('Auto · C');
@@ -200,12 +204,14 @@ test('Key panel: circle of fifths follows committed chords and Auto preferences'
   await expect(status).toContainText('G major');
   await page.getByRole('button', { name: 'Done' }).click();
 
-  // Committing an F chord rules G major out: the preference is dropped automatically.
+  // Committing an F note rules G major out: the preference is dropped automatically.
+  // (G major's chord palette has no F chord, so add F to the C chord on the wheel.)
   await openGuitar(page);
   await page.getByTestId('open-layer').click();
-  await recordOn(page);
-  await tapKey(page, 53);
-  await page.getByTestId('make-major').click();
+  await page.locator('.block.chord').first().click();
+  await page.getByTestId('open-note-wheel').click();
+  await page.getByTestId('note-wheel').getByRole('button', { name: 'Add F', exact: true }).click();
+  await page.getByRole('button', { name: 'Done' }).click();
   await page.getByRole('button', { name: 'Back to guitar' }).click();
   await page.getByRole('button', { name: 'Back to song' }).click();
   await expect(page.getByRole('button', { name: 'Key', exact: true })).toContainText('Auto · C');
@@ -213,12 +219,13 @@ test('Key panel: circle of fifths follows committed chords and Auto preferences'
   await expect(status).toContainText('C major');
   await expect(wheel).toHaveAttribute('data-rotation', '0');
   await expect(cell('G')).toHaveAttribute('data-key-state', 'impossible');
-  await expect(cell('F')).toHaveAttribute('data-chord-state', 'usedDiatonic');
+  await expect(cell('C')).toHaveAttribute('data-chord-state', 'usedDiatonic');
+  await expect(cell('F')).toHaveAttribute('data-chord-state', 'diatonic'); // an added note, not a chord
   await expect(wheel.getByRole('button')).toHaveCount(2); // C major and A minor
 });
 
 test('locked instruments do not open an editor', async ({ page }) => {
-  await page.getByRole('button', { name: 'Drums' }).click({ force: true });
+  await page.getByRole('button', { name: 'Vocals' }).click({ force: true });
   await expect(page.locator('[data-screen="home"]')).toBeVisible();
   await expect(page.locator('.toast')).toContainText('coming later');
   await page.getByRole('button', { name: 'Bass' }).click({ force: true });
@@ -248,7 +255,7 @@ test('Record OFF: keys only preview — no events, no history, no key inference'
   await page.getByTestId('open-layer').click();
   await page.getByTestId('undo').click();
   await expect(page.locator('[data-screen="guitar"]')).toBeVisible();
-  await expect(page.locator('.toast')).toHaveText('Undo: Add layer Single Notes 1');
+  await expect(page.locator('.toast')).toHaveText('Undo: Add layer Guitar Notes 1');
   await expect(page.locator('.layer-card')).toHaveCount(0);
   await page.getByTestId('redo').click();
   await expect(page.locator('.layer-card')).toHaveCount(1);
@@ -305,44 +312,46 @@ test('single-note layer: Record ON keys insert notes, editing and undo/redo work
   await expect(page.locator('.keyboard-head .range')).toHaveText('C4 – C5');
 });
 
-test('strummed chord layer: seed note → minor chord, strings, strum grid, playback', async ({ page }) => {
+test('guitar chords: pick from the key, special notes, voicing, strum grid, playback', async ({ page }) => {
   await openGuitar(page);
-  await addLayer(page, 'strum');
+  await addLayer(page, 'chords');
 
-  await expect(page.getByTestId('strum-grid')).toBeVisible();
+  // The same chord selector as Piano; strumming is the default style.
+  await expect(page.getByTestId('palette-key')).toHaveText('Chords in C major');
+  await expect(page.locator('.palette-chord')).toHaveText(['C', 'Dm', 'Em', 'F', 'G', 'Am']);
+  await expect(page.getByTestId('layer-style-switch').locator('[data-style="together"]')).toHaveText('Strum');
   await expect(page.locator('.strum-slot')).toHaveCount(8);
 
-  // Record OFF: a key press does not create a seed chord.
-  await tapKey(page, 57);
+  // Tapping a chord only previews it.
+  await page.locator('.palette-chord[data-chord="Am"]').click();
   await expect(page.locator('.block.chord')).toHaveCount(0);
-
-  await recordOn(page);
-  await tapKey(page, 57); // A3
-  await expect(page.locator('.block.chord.seed')).toHaveCount(1);
-  await expect(page.getByTestId('chord-panel')).toBeVisible();
-
-  await page.getByTestId('make-minor').click();
+  await page.getByTestId('add-chord').click();
+  await expect(page.locator('.block.chord')).toHaveCount(1);
   await expect(page.locator('.block.chord').first()).toContainText('Am');
-  await expect(page.getByTestId('chord-tones').locator('.tone')).toHaveText(['A2', 'E3', 'A3', 'C4', 'E4']);
+  // A real guitar voicing underneath.
+  await expect(page.getByTestId('chord-notes').locator('.tone')).toHaveText(['A2', 'E3', 'A3', 'C4', 'E4']);
 
-  // Strings: low E is muted for Am, enable it, then re-mute
-  await page.getByTestId('toggle-strings').click();
-  await expect(page.locator('.string[data-string="6"]')).toHaveClass(/muted/);
-  await page.getByRole('button', { name: 'Play string 6' }).click();
-  await expect(page.locator('.string[data-string="6"]')).not.toHaveClass(/muted/);
-  await expect(page.getByTestId('chord-tones').locator('.tone')).toHaveCount(6);
+  // Special chord: + G on the free low string makes Am7; undo takes it off.
+  await page.getByTestId('open-note-wheel').click();
+  await page.getByTestId('note-wheel').getByRole('button', { name: 'Add G', exact: true }).click();
+  await expect(page.getByTestId('wheel-chord-name')).toHaveText('Am7');
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByTestId('chord-notes').locator('.tone')).toHaveCount(6);
   await page.getByTestId('undo').click();
-  await expect(page.getByTestId('chord-tones').locator('.tone')).toHaveCount(5);
+  await expect(page.getByTestId('chord-name')).toHaveText('Am');
 
-  // Remove a chord tone via the chip
-  await page.getByTestId('chord-tones').locator('.tone', { hasText: 'C4' }).click();
-  await page.getByRole('button', { name: 'Remove tone' }).click();
-  await expect(page.getByTestId('chord-tones').locator('.tone')).toHaveCount(4);
-  await expect(page.locator('.block.chord').first()).toContainText('A?');
+  // Voicing moves the shape up the neck (open Am → 5th-fret barre), same chord.
+  await page.getByTestId('cycle-voicing').click();
+  await expect(page.getByTestId('chord-name')).toHaveText('Am');
+  await expect(page.getByTestId('chord-notes').locator('.tone')).toHaveText(['A2', 'E3', 'A3', 'C4', 'E4', 'A4']);
   await page.getByTestId('undo').click();
-  await expect(page.locator('.block.chord').first()).toContainText('Am');
+  await expect(page.getByTestId('chord-notes').locator('.tone')).toHaveCount(5);
 
-  // Strum grid cycles — → ↓ → ↑
+  // Next chord, then the strum grid for the whole layer.
+  await page.getByTestId('next-chord').click();
+  await addChord(page, 'F');
+  await expect(page.locator('.block.chord')).toHaveCount(2);
+  await page.getByTestId('next-chord').click();
   const slot = page.locator('[data-strum-slot="1"]');
   await expect(slot).toHaveText(/—/);
   await slot.click();
@@ -352,39 +361,7 @@ test('strummed chord layer: seed note → minor chord, strings, strum grid, play
   await page.getByTestId('undo').click();
   await expect(slot).toHaveText(/↓/);
 
-  // Second chord with "New chord" target, then Major
-  await tapKey(page, 50); // D3
-  await page.getByTestId('make-major').click();
-  await expect(page.locator('.block.chord')).toHaveCount(2);
-  await expect(page.locator('.block.chord').nth(1)).toContainText('D');
-
-  // "Add to chord" is an explicit edit: it works with Record OFF too.
-  await page.getByTestId('record').click();
-  await expect(page.getByTestId('record')).toHaveAttribute('aria-pressed', 'false');
-  await page.getByTestId('input-target').getByText('Add to chord').click();
-  await expect(page.getByTestId('chord-tones').locator('.tone')).toHaveCount(4);
-  await tapKey(page, 52); // E3 onto a muted string
-  await expect(page.getByTestId('chord-tones').locator('.tone')).toHaveCount(5);
-  await expect(page.locator('.block.chord')).toHaveCount(2);
-  // ...while "Preview" keys with Record OFF add nothing.
-  await page.getByTestId('input-target').getByText('Preview').click();
-  await tapKey(page, 55);
-  await expect(page.locator('.block.chord')).toHaveCount(2);
-  await expect(page.getByTestId('chord-tones').locator('.tone')).toHaveCount(5);
-
-  // Key guidance: committed Am + D(+E) material dims notes outside every plausible key.
-  await expect(page.locator('.key.dim').first()).toBeVisible();
-  await expect(page.locator('.key[data-midi="49"]')).toHaveClass(/dim/); // C#
-  await expect(page.locator('.key[data-midi="50"]')).not.toHaveClass(/dim/); // D
-  // Dimmed keys still play (Record ON -> still record).
-  await recordOn(page);
-  await tapKey(page, 49);
-  await expect(page.locator('.block.chord')).toHaveCount(3);
-  await page.getByTestId('undo').click();
-  await expect(page.locator('.block.chord')).toHaveCount(2);
-
-  // Playback runs from the start of the song and the playhead appears
-  await page.locator('.timeline-inner').click({ position: { x: 8, y: 100 } });
+  // Playback: the playhead moves.
   await page.getByTestId('play').click();
   await expect(page.locator('.playhead')).toBeVisible();
   await page.waitForTimeout(400);
@@ -396,63 +373,48 @@ test('strummed chord layer: seed note → minor chord, strings, strum grid, play
   await expect(page.locator('.playhead')).toHaveCount(0);
 });
 
-test('duplicate a chord layer and switch the copy from strummed to picked', async ({ page }) => {
+test('guitar chords: switch to Pick after laying them down; one chord can differ', async ({ page }) => {
   await openGuitar(page);
-  await addLayer(page, 'strum');
-  await recordOn(page);
-  await tapKey(page, 57);
-  await page.getByTestId('make-minor').click();
-  await expect(page.locator('.block.chord').first()).toContainText('Am');
+  await addLayer(page, 'chords');
+  await addChord(page, 'Am');
+  await page.getByTestId('next-chord').click();
 
+  // Decide afterwards: pick the whole layer, one note at a time.
+  await page.getByTestId('layer-style-switch').locator('[data-style="arpeggio"]').click();
+  await expect(page.getByTestId('layer-style-switch').locator('[data-style="arpeggio"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.strum-slot')).toHaveCount(0);
+  const arp = page.getByTestId('layer-arp');
+  await arp.locator('[data-arp-preset="down"]').click();
+  await expect(arp.locator('[data-arp-preset="down"]')).toHaveAttribute('aria-pressed', 'true');
+  await arp.locator('[data-arp-rate="quarter"]').click();
+
+  // Customize: rows are the chord's notes (Am: five strings), columns the eighths.
+  await page.getByTestId('layer-arp-customize').click();
+  await expect(arp.locator('.arp-row:not(.arp-labels)')).toHaveCount(5);
+  await expect(arp.locator('[data-arp-cell="0-4"]')).toHaveAttribute('aria-pressed', 'true'); // Down starts on top
+  await arp.locator('[data-arp-cell="1-0"]').click();
+  await expect(arp.locator('[data-arp-cell="1-0"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('layer-arp-customize')).toHaveText('Custom ▾');
+  await page.getByTestId('undo').click();
+  await expect(arp.locator('[data-arp-cell="1-0"]')).toHaveAttribute('aria-pressed', 'false');
+
+  // One chord can be strummed while the layer picks.
+  await page.locator('.block.chord').first().click();
+  const chordStyle = page.getByTestId('chord-style');
+  await expect(chordStyle).toContainText('layer: Pick');
+  await page.getByTestId('chord-style-switch').locator('[data-style="together"]').click();
+  await expect(chordStyle).toContainText('its own');
+  await page.getByTestId('chord-style-switch').locator('[data-style="layer"]').click();
+  await expect(chordStyle).toContainText('layer: Pick');
+
+  // The layer list shows the kind and style; hold duplicates.
   await page.getByRole('button', { name: 'Back to guitar' }).click();
   const cards = page.locator('.layer-card');
-  await expect(cards).toHaveCount(1);
-
+  await expect(cards.first().locator('small')).toHaveText('Chords · Pick · 1 chord');
   await longPress(page, cards.first().getByTestId('open-layer'));
-  await expect(page.locator('.sheet[aria-label="Duplicate this layer?"]')).toBeVisible();
   await page.getByTestId('duplicate-layer').click();
-
   await expect(cards).toHaveCount(2);
-  await expect(cards.nth(0).getByTestId('open-layer')).toContainText('Strummed Chords 1');
-  await expect(cards.nth(1).getByTestId('open-layer')).toContainText('Strummed Chords 2');
-
-  await cards.nth(1).getByTestId('open-layer').click();
-  await expect(page.locator('[data-screen="layer"][data-layer-type="strum"]')).toBeVisible();
-  await expect(page.locator('.block.chord')).toHaveCount(1);
-  await expect(page.locator('.block.chord').first()).toContainText('Am');
-
-  await page.getByTestId('change-layer-type').click();
-  await expect(page.locator('.sheet[aria-label="Layer type"]')).toBeVisible();
-  await page.locator('[data-layer-type-choice="picked"]').click();
-
-  await expect(page.locator('[data-screen="layer"][data-layer-type="picked"]')).toBeVisible();
-  await expect(page.getByTestId('change-layer-type')).toContainText('Picked Chords 1');
-  await expect(page.locator('.block.chord')).toHaveCount(1);
-  await expect(page.locator('.block.chord').first()).toContainText('Am');
-  await expect(page.getByTestId('pick-grid')).toBeVisible();
-});
-
-test('picked chord layer: pattern edits and per-chord override', async ({ page }) => {
-  await openGuitar(page);
-  await addLayer(page, 'picked');
-  await expect(page.getByTestId('pick-grid')).toBeVisible();
-
-  await page.locator('[data-pick="0-5"]').click();
-  await expect(page.locator('[data-pick="0-5"]')).toHaveClass(/on/);
-  await page.getByTestId('undo').click();
-  await expect(page.locator('[data-pick="0-6"]')).toHaveClass(/on/);
-
-  await recordOn(page);
-  await tapKey(page, 52); // E3
-  await page.getByTestId('make-minor').click();
-  await expect(page.locator('.block.chord').first()).toContainText('Em');
-
-  await page.getByTestId('override-pick').click();
-  await expect(page.locator('.panel-label', { hasText: 'Picking (this chord)' })).toBeVisible();
-  await page.locator('[data-pick="1-1"]').click();
-  await expect(page.locator('[data-pick="1-1"]')).toHaveClass(/on/);
-  await page.getByRole('button', { name: 'Use default' }).click();
-  await expect(page.locator('.panel-label', { hasText: 'Picking (layer default)' })).toBeVisible();
+  await expect(cards.nth(1).getByTestId('open-layer')).toContainText('Guitar Chords 2');
 });
 
 test('timeline slots are added explicitly and can stay empty', async ({ page }) => {

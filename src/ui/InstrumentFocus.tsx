@@ -1,52 +1,71 @@
 import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { createPianoLayer, duplicatePianoLayer } from '../model/piano';
-import { LAYER_TYPE_LABELS, appendLayer, assumedKey, createLayer, duplicateLayer, removeLayer, toggleLayerMute } from '../model/song';
-import type { AnyLayer, GuitarLayerType, Song } from '../model/types';
-import { useStore, type View } from '../state/store';
+import { STYLE_LABELS } from '../model/arpeggio';
+import { createDrumLayer } from '../model/drums';
+import { createPianoLayer, createPianoNotesLayer } from '../model/piano';
+import {
+  appendLayer,
+  assumedKey,
+  createLayer,
+  duplicateLayer,
+  layerKind,
+  removeLayer,
+  toggleLayerMute,
+  type InstrumentId,
+} from '../model/song';
+import type { AnyLayer, Song } from '../model/types';
+import { useStore } from '../state/store';
 import { Overview } from './Overview';
 import { PlayButton } from './PlayButton';
 import { Sheet } from './Sheet';
 import { UndoRedo } from './UndoRedo';
 
-const TYPE_OPTIONS: { type: GuitarLayerType; hint: string }[] = [
-  { type: 'strum', hint: 'Full chords with a strumming pattern' },
-  { type: 'picked', hint: 'Chords played one string at a time' },
-  { type: 'single', hint: 'Individual notes — melodies and riffs' },
-];
-
-export type InstrumentId = 'guitar' | 'piano';
+type NewKind = 'chords' | 'notes';
 
 interface InstrumentConfig {
   title: string;
   layers: (song: Song) => AnyLayer[];
-  /** Guitar asks which kind of layer; Piano has one kind and adds it directly. */
-  askType: boolean;
-  summary: (layer: AnyLayer) => string;
-  duplicate: (song: Song, layerId: string) => Song;
-  layerView: (layerId: string) => View;
+  /** Guitar and Piano ask Chords or Notes; Drums has one kind and adds it directly. */
+  kinds: { kind: NewKind; hint: string }[] | null;
+  create: (song: Song, kind: NewKind | null) => AnyLayer;
 }
 
 const INSTRUMENTS: Record<InstrumentId, InstrumentConfig> = {
   guitar: {
     title: 'Guitar',
     layers: (song) => song.guitar.layers,
-    askType: true,
-    summary: (layer) =>
-      layer.type === 'piano'
-        ? ''
-        : `${LAYER_TYPE_LABELS[layer.type]} · ${layer.events.length} ${layer.type === 'single' ? 'notes' : 'chords'}`,
-    duplicate: duplicateLayer,
-    layerView: (layerId) => ({ name: 'layer', layerId }),
+    kinds: [
+      { kind: 'chords', hint: 'Pick chords from the key, then strum or pick them' },
+      { kind: 'notes', hint: 'Melodies and riffs, by keyboard or humming' },
+    ],
+    create: (song, kind) => createLayer(kind === 'notes' ? 'single' : 'chords', song),
   },
   piano: {
     title: 'Piano',
     layers: (song) => song.piano.layers,
-    askType: false,
-    summary: (layer) => `${layer.events.length} chord${layer.events.length === 1 ? '' : 's'}`,
-    duplicate: duplicatePianoLayer,
-    layerView: (layerId) => ({ name: 'pianoLayer', layerId }),
+    kinds: [
+      { kind: 'chords', hint: 'Pick chords from the key, then play them together or as arpeggios' },
+      { kind: 'notes', hint: 'Melodies, by keyboard or humming' },
+    ],
+    create: (song, kind) => (kind === 'notes' ? createPianoNotesLayer(song) : createPianoLayer(song)),
+  },
+  drums: {
+    title: 'Drums',
+    layers: (song) => song.drums.layers,
+    kinds: null,
+    create: (song) => createDrumLayer(song),
   },
 };
+
+/** "Chords · Strum · 4 chords", "Notes · 12 notes", "Drums · 16 hits". */
+function layerSummary(layer: AnyLayer): string {
+  const n = layer.events.length;
+  const count = (word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const kind = layerKind(layer);
+  if (kind === 'drums') return count('hit');
+  if (kind === 'notes') return `Notes · ${count('note')}`;
+  const style = layer.type === 'chords' || layer.type === 'piano' ? STYLE_LABELS[layer.type === 'piano' ? 'piano' : 'guitar'][layer.style] : '';
+  return `Chords · ${style} · ${count('chord')}`;
+}
 
 /** An instrument's layer list: add, open, mute, delete, and hold to duplicate. */
 export function InstrumentFocus({ instrument }: { instrument: InstrumentId }) {
@@ -67,11 +86,11 @@ export function InstrumentFocus({ instrument }: { instrument: InstrumentId }) {
   } | null>(null);
   const suppressOpen = useRef<string | null>(null);
 
-  const addLayer = (type?: GuitarLayerType) => {
-    const layer = type ? createLayer(type, song) : createPianoLayer(song);
+  const addLayer = (kind: NewKind | null) => {
+    const layer = config.create(song, kind);
     commit((s) => appendLayer(s, layer));
     setPicking(false);
-    setView(config.layerView(layer.id));
+    setView({ name: 'layer', layerId: layer.id, kind: layerKind(layer), instrument });
   };
 
   const deleteLayer = (id: string) => {
@@ -116,7 +135,8 @@ export function InstrumentFocus({ instrument }: { instrument: InstrumentId }) {
       suppressOpen.current = null;
       return;
     }
-    setView(config.layerView(id));
+    const layer = layers.find((l) => l.id === id);
+    setView({ name: 'layer', layerId: id, kind: layer && layerKind(layer), instrument });
   };
 
   const closeDuplicate = () => {
@@ -125,7 +145,7 @@ export function InstrumentFocus({ instrument }: { instrument: InstrumentId }) {
   };
 
   const duplicateSelectedLayer = (id: string) => {
-    commit((s) => config.duplicate(s, id));
+    commit((s) => duplicateLayer(s, id));
     closeDuplicate();
   };
 
@@ -142,7 +162,7 @@ export function InstrumentFocus({ instrument }: { instrument: InstrumentId }) {
           <UndoRedo />
           <button
             className="btn primary small"
-            onClick={() => (config.askType ? setPicking(true) : addLayer())}
+            onClick={() => (config.kinds ? setPicking(true) : addLayer(null))}
             data-testid="add-layer"
           >
             + Layer
@@ -177,7 +197,7 @@ export function InstrumentFocus({ instrument }: { instrument: InstrumentId }) {
                     data-testid="open-layer"
                   >
                     <b>{layer.name}</b>
-                    <small>{config.summary(layer)}</small>
+                    <small>{layerSummary(layer)}</small>
                   </button>
                   <button
                     className={`btn small ${layer.muted ? 'active' : 'ghost'}`}
@@ -209,12 +229,12 @@ export function InstrumentFocus({ instrument }: { instrument: InstrumentId }) {
         <PlayButton />
       </div>
 
-      {picking && (
-        <Sheet title="New guitar layer" onClose={() => setPicking(false)}>
+      {picking && config.kinds && (
+        <Sheet title={`New ${config.title.toLowerCase()} layer`} onClose={() => setPicking(false)}>
           <div className="option-list">
-            {TYPE_OPTIONS.map((o) => (
-              <button key={o.type} className="option" onClick={() => addLayer(o.type)} data-layer-type={o.type}>
-                <span>{LAYER_TYPE_LABELS[o.type]}</span>
+            {config.kinds.map((o) => (
+              <button key={o.kind} className="option" onClick={() => addLayer(o.kind)} data-layer-kind={o.kind}>
+                <span>{o.kind === 'chords' ? 'Chords' : 'Notes'}</span>
                 <small>{o.hint}</small>
               </button>
             ))}

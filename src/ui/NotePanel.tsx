@@ -8,17 +8,21 @@ interface NotePanelProps {
   layerId: string;
   note: NoteEvent;
   timeSignature: TimeSignature;
+  /** Guitar notes also show where they sit on the neck. */
+  instrument: 'guitar' | 'piano';
 }
 
-export function NotePanel({ layerId, note, timeSignature }: NotePanelProps) {
+export function NotePanel({ layerId, note, timeSignature, instrument }: NotePanelProps) {
   const pos = placeNote(note.midi);
   return (
     <div className="panel-section" data-testid="note-panel">
       <div className="panel-label">
         <span>Note</span>
-        <span>
-          string {stringNumber(pos.index)} · fret {pos.fret}
-        </span>
+        {instrument === 'guitar' && (
+          <span>
+            string {stringNumber(pos.index)} · fret {pos.fret}
+          </span>
+        )}
       </div>
       <div className="steppers">
         <div className="stepper">

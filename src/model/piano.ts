@@ -1,8 +1,9 @@
 import { newId } from './ids';
 import { diatonicChords, keyPitchClasses, resolveAssumedKey, type Triad } from './keys';
 import { NOTE_NAMES, chordIntervals, chordName, pitchClassOf } from './music';
-import { pitchClassHistogram, usedPitchClasses } from './song';
-import type { ChordQuality, MusicalKey, PianoEvent, PianoLayer, PitchClass, Song } from './types';
+import { DEFAULT_ARP } from './arpeggio';
+import { LAYER_LABELS, nextLayerName, pitchClassHistogram, usedPitchClasses } from './song';
+import type { ChordQuality, MusicalKey, PianoEvent, PianoLayer, PianoNotesLayer, PitchClass, Song } from './types';
 import { DEFAULT_VELOCITY } from './types';
 
 /**
@@ -16,31 +17,23 @@ import { DEFAULT_VELOCITY } from './types';
 /** Root-position chords are voiced with the root in F3..E4, so every key sits around middle C. */
 const LOWEST_ROOT = 53;
 
-export const PIANO_LAYER_LABEL = 'Piano';
-
+/** A piano chords layer; chords are struck together until the style is changed. */
 export function createPianoLayer(song: Song): PianoLayer {
-  let max = 0;
-  for (const layer of song.piano.layers) {
-    const suffix = layer.name.startsWith(`${PIANO_LAYER_LABEL} `) ? Number(layer.name.slice(PIANO_LAYER_LABEL.length + 1)) : NaN;
-    if (Number.isInteger(suffix) && suffix > 0) max = Math.max(max, suffix);
-  }
-  return { id: newId('layer'), type: 'piano', name: `${PIANO_LAYER_LABEL} ${max + 1}`, volume: 0.9, muted: false, events: [] };
+  return {
+    id: newId('layer'),
+    type: 'piano',
+    name: nextLayerName(song, LAYER_LABELS.piano.chords),
+    volume: 0.9,
+    muted: false,
+    events: [],
+    style: 'together',
+    arp: DEFAULT_ARP,
+  };
 }
 
-/** Copy a piano layer (fresh ids, same music) directly after its source. */
-export function duplicatePianoLayer(song: Song, layerId: string): Song {
-  const index = song.piano.layers.findIndex((layer) => layer.id === layerId);
-  if (index < 0) return song;
-  const source = song.piano.layers[index];
-  const duplicate: PianoLayer = {
-    ...source,
-    id: newId('layer'),
-    name: createPianoLayer(song).name,
-    events: source.events.map((event) => ({ ...event, id: newId('p'), notes: [...event.notes] })),
-  };
-  const layers = [...song.piano.layers];
-  layers.splice(index + 1, 0, duplicate);
-  return { ...song, piano: { ...song.piano, layers } };
+/** A piano single-notes layer (melodies), entered with the keyboard or by humming. */
+export function createPianoNotesLayer(song: Song): PianoNotesLayer {
+  return { id: newId('layer'), type: 'pianoNotes', name: nextLayerName(song, LAYER_LABELS.piano.notes), volume: 0.9, muted: false, events: [] };
 }
 
 // ---- chords ----------------------------------------------------------------
@@ -61,14 +54,25 @@ export function createPianoChord(
   return { kind: 'piano', id: newId('p'), root, quality, notes: pianoChordNotes(root, quality), start, duration, velocity };
 }
 
+/**
+ * A chord as notes: the standard chord it was picked as, plus every note
+ * actually sounding. Piano chords are exactly this; a guitar chord is its
+ * sounding strings.
+ */
+export interface ChordShape {
+  root: PitchClass;
+  quality: ChordQuality;
+  notes: number[];
+}
+
 /** Pitch classes of the standard chord the event was built from. */
-export function pianoChordTones(event: Pick<PianoEvent, 'root' | 'quality'>): Set<PitchClass> {
+export function chordTonesOf(event: Pick<ChordShape, 'root' | 'quality'>): Set<PitchClass> {
   return new Set(chordIntervals(event.quality).map((i) => ((event.root + i) % 12) as PitchClass));
 }
 
 /** Pitch classes the user added on top of the standard chord, in the order they sound. */
-export function pianoAddedPitchClasses(event: PianoEvent): PitchClass[] {
-  const tones = pianoChordTones(event);
+export function addedPitchClasses(event: ChordShape): PitchClass[] {
+  const tones = chordTonesOf(event);
   const out: PitchClass[] = [];
   for (const midi of event.notes) {
     const pc = pitchClassOf(midi);
@@ -89,7 +93,7 @@ export function setPianoChord(event: PianoEvent, root: PitchClass, quality: Chor
  * so D F# A + C# sounds as D F# A C#.
  */
 export function togglePianoNote(event: PianoEvent, pc: PitchClass): PianoEvent {
-  const tones = pianoChordTones(event);
+  const tones = chordTonesOf(event);
   if (tones.has(pc)) return event;
   if (event.notes.some((m) => pitchClassOf(m) === pc)) {
     return { ...event, notes: event.notes.filter((m) => pitchClassOf(m) !== pc) };
@@ -107,9 +111,9 @@ const NAMED_EXTENSIONS: Record<ChordQuality, Record<string, string>> = {
 };
 
 /** Best confident name: "D", "Dmaj7", or "D + C#" when there is no common symbol. */
-export function pianoChordName(event: PianoEvent): string {
+export function chordShapeName(event: ChordShape): string {
   const base = chordName(event.root, event.quality);
-  const added = pianoAddedPitchClasses(event);
+  const added = addedPitchClasses(event);
   if (added.length === 0) return base;
   const intervals = added.map((pc) => (pc - event.root + 12) % 12).sort((a, b) => a - b);
   const suffix = NAMED_EXTENSIONS[event.quality][intervals.join(',')];
@@ -119,7 +123,7 @@ export function pianoChordName(event: PianoEvent): string {
 
 // ---- key palette -----------------------------------------------------------
 
-export interface PianoPalette {
+export interface KeyChordPalette {
   /** The key the chords come from. */
   key: MusicalKey;
   /** True when Auto has no material yet and the key is just a starting point. */
@@ -136,7 +140,7 @@ export interface PianoPalette {
  * committed yet Auto has no key, so start from C major / A minor according
  * to the Major/Minor toggle — the same fallback the Key panel's lock uses.
  */
-export function pianoPalette(song: Song): PianoPalette {
+export function keyChordPalette(song: Song): KeyChordPalette {
   const { assumed, tonality } = resolveAssumedKey(song.key, usedPitchClasses(song), pitchClassHistogram(song));
   const key: MusicalKey = assumed ?? (tonality === 'major' ? { tonic: 0, quality: 'major' } : { tonic: 9, quality: 'minor' });
   const chords = diatonicChords(key).filter((t): t is Triad & { quality: ChordQuality } => t.quality !== 'dim');

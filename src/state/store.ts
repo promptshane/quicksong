@@ -7,7 +7,7 @@ import {
   normalizeProjectName,
   type ProjectMeta,
 } from '../model/projects';
-import { createSong, reconcileKeyPreference } from '../model/song';
+import { createSong, reconcileKeyPreference, type InstrumentId, type LayerKind } from '../model/song';
 import { eighthBeats, songBeats } from '../model/time';
 import type { Song } from '../model/types';
 import {
@@ -22,13 +22,18 @@ import {
   scheduleProjectSave,
 } from './persistence';
 
+/** Screens: Projects → Song Home → an instrument's layers → one layer's editor. */
 export type View =
   | { name: 'projects' }
   | { name: 'home' }
   | { name: 'guitar' }
-  | { name: 'layer'; layerId: string }
   | { name: 'piano' }
-  | { name: 'pianoLayer'; layerId: string };
+  | { name: 'drums' }
+  /**
+   * A layer's editor. `kind` / `instrument` remember what was opened, so the
+   * editor can still find its way back if Undo removes the layer.
+   */
+  | { name: 'layer'; layerId: string; kind?: LayerKind; instrument?: InstrumentId };
 
 const HISTORY_LIMIT = 200;
 

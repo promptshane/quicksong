@@ -1,4 +1,4 @@
-import { eighthGrouping, eighthsPerBeat } from '../model/time';
+import { eighthGrouping, eighthSlotLabel } from '../model/time';
 import type { StrumSlot, TimeSignature } from '../model/types';
 
 interface StrumGridProps {
@@ -8,12 +8,6 @@ interface StrumGridProps {
 }
 
 const GLYPH: Record<'down' | 'up' | 'none', string> = { down: '↓', up: '↑', none: '—' };
-
-function slotLabel(index: number, ts: TimeSignature): string {
-  const per = eighthsPerBeat(ts);
-  if (per === 1) return String(index + 1);
-  return index % per === 0 ? String(index / per + 1) : '&';
-}
 
 /** One tappable cell per eighth note. Tap cycles — → ↓ → ↑. */
 export function StrumGrid({ pattern, timeSignature, onTap }: StrumGridProps) {
@@ -34,11 +28,11 @@ export function StrumGrid({ pattern, timeSignature, onTap }: StrumGridProps) {
                 key={i}
                 className={`strum-slot ${slot ?? ''}`}
                 onClick={() => onTap(i)}
-                aria-label={`Slot ${slotLabel(i, timeSignature)}: ${slot ?? 'no strum'}`}
+                aria-label={`Slot ${eighthSlotLabel(i, timeSignature)}: ${slot ?? 'no strum'}`}
                 data-strum-slot={i}
               >
                 <span>{GLYPH[slot ?? 'none']}</span>
-                <small>{slotLabel(i, timeSignature)}</small>
+                <small>{eighthSlotLabel(i, timeSignature)}</small>
               </button>
             );
           })}

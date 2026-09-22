@@ -292,9 +292,8 @@ class Transport {
 
   private tick(): void {
     const engine = getAudioEngine();
-    const instrument = engine.getInstrument();
     const ctx = engine.context;
-    if (!instrument || !ctx) return;
+    if (!engine.getInstrument() || !ctx) return;
     const horizon = ctx.currentTime + LOOKAHEAD_SEC;
     const span = this.span;
 
@@ -313,7 +312,7 @@ class Transport {
       const when = this.timeForBeat(passBeat(n.beat, this.pass, span)) + n.offsetSec;
       if (when > horizon) break;
       if (n.gain > 0) {
-        instrument.noteOn(n.midi, n.velocity, when, beatsToSeconds(n.durationBeats, this.bpm), n.gain);
+        engine.getInstrument(n.instrument)?.noteOn(n.midi, n.velocity, when, beatsToSeconds(n.durationBeats, this.bpm), n.gain);
       }
       this.nextIndex++;
     }

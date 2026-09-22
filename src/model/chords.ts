@@ -1,5 +1,5 @@
-import { identifyTriad, pitchClassOf } from './music';
-import type { ChordEvent, ChordQuality, GuitarString, PitchClass, Voicing } from './types';
+import { pitchClassOf } from './music';
+import type { ChordQuality, GuitarString, PitchClass, Voicing } from './types';
 
 /** Open-string MIDI numbers, low E (string 6) to high e (string 1). */
 export const OPEN_STRINGS = [40, 45, 50, 55, 59, 64] as const;
@@ -101,71 +101,4 @@ export function placeNote(midi: number): { index: number; fret: number } {
     best = { index, fret };
   }
   return best;
-}
-
-function emptyVoicing(): Voicing {
-  return OPEN_STRINGS.map(() => ({ fret: 0, muted: true })) as Voicing;
-}
-
-/** A voicing with a single tone on it — the "note before it becomes a chord". */
-export function singleNoteVoicing(midi: number): Voicing {
-  const v = emptyVoicing();
-  const pos = placeNote(midi);
-  v[pos.index] = { fret: pos.fret, muted: false };
-  return v;
-}
-
-/** Add a tone to a voicing, using a muted string if possible. */
-export function addToneToVoicing(voicing: Voicing, midi: number): Voicing {
-  const next = voicing.map((s) => ({ ...s })) as Voicing;
-  let best: { index: number; fret: number; score: number } | null = null;
-  next.forEach((s, index) => {
-    const fret = midi - OPEN_STRINGS[index];
-    if (fret < 0 || fret > MAX_FRET) return;
-    // Strongly prefer muted strings so we do not displace existing tones.
-    const score = fret + (s.muted ? 0 : 100);
-    if (!best || score < best.score) best = { index, fret, score };
-  });
-  if (!best) return next;
-  const b: { index: number; fret: number } = best;
-  next[b.index] = { fret: b.fret, muted: false };
-  return next;
-}
-
-export function setStringMuted(voicing: Voicing, index: number, muted: boolean): Voicing {
-  const next = voicing.map((s) => ({ ...s })) as Voicing;
-  next[index] = { ...next[index], muted };
-  return next;
-}
-
-export function shiftStringFret(voicing: Voicing, index: number, delta: number): Voicing {
-  const next = voicing.map((s) => ({ ...s })) as Voicing;
-  const fret = Math.max(0, Math.min(MAX_FRET, next[index].fret + delta));
-  next[index] = { ...next[index], fret };
-  return next;
-}
-
-/** Are these two voicings the same frets/mutes? */
-export function sameVoicing(a: Voicing, b: Voicing): boolean {
-  return a.every((s, i) => s.fret === b[i].fret && s.muted === b[i].muted);
-}
-
-/**
- * Re-derive the chord's root/quality after the user edits strings.
- * If the sounding notes form a major/minor triad, name it; otherwise 'custom'.
- * A single sounding note is a 'note'.
- */
-export function relabelChord(chord: ChordEvent): ChordEvent {
-  const notes = soundingNotes(chord.strings);
-  if (notes.length === 0) return { ...chord, quality: 'custom' };
-  if (notes.length === 1) return { ...chord, root: pitchClassOf(notes[0].midi), quality: 'note' };
-  const pcs = new Set(notes.map((n) => pitchClassOf(n.midi)));
-  const triad = identifyTriad(pcs);
-  if (triad) return { ...chord, root: triad.root, quality: triad.quality };
-  return { ...chord, quality: 'custom' };
-}
-
-/** Strings (as 6..1 numbers) that currently sound in a chord. */
-export function activeStringNumbers(chord: ChordEvent): number[] {
-  return soundingNotes(chord.strings).map((n) => stringNumber(n.index));
 }

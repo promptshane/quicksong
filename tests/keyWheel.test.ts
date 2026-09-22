@@ -21,13 +21,12 @@ import {
   slotTriad,
   wheelRotation,
 } from '../src/model/keyWheel';
-import { chordName, keyLabel } from '../src/model/music';
+import { chordName, keyLabel, pitchClassOf } from '../src/model/music';
 import {
   addEvent,
-  buildChord,
+  createGuitarChord,
   createLayer,
   createNoteEvent,
-  createSeedChord,
   createSong,
   duplicateLayer,
   pitchClassHistogram,
@@ -39,6 +38,7 @@ import {
   usedChords,
   usedPitchClasses,
 } from '../src/model/song';
+import { legacySeedChord } from './helpers';
 import type { MusicalKey, PitchClass, Song } from '../src/model/types';
 
 const C = 0, Cs = 1, D = 2, Ds = 3, E = 4, F = 5, Fs = 6, G = 7, Gs = 8, A = 9, As = 10, B = 11;
@@ -48,13 +48,13 @@ const names = (triads: Triad[]) => triads.map((t) => chordName(t.root, t.quality
 /** Song with one strum layer; returns [song, layerId]. */
 function songWithStrumLayer(): [Song, string] {
   const song = createSong();
-  const layer = createLayer('strum', song);
+  const layer = createLayer('chords', song);
   return [{ ...song, guitar: { layers: [layer] } }, layer.id];
 }
 
 /** Commit a major/minor chord on a layer at `start`. */
 function withChord(song: Song, layerId: string, rootMidi: number, quality: 'major' | 'minor', start = 0, duration = 4): Song {
-  return addEvent(song, layerId, buildChord(createSeedChord(rootMidi, start, duration), quality));
+  return addEvent(song, layerId, createGuitarChord(pitchClassOf(rootMidi), quality, start, duration));
 }
 
 /** C (long) then G (short): C major is the clear best, but G major / Em / Am stay plausible. */
@@ -362,12 +362,12 @@ describe('Major / Minor toggle', () => {
 describe('usedChords', () => {
   it('collects major/minor chords across layers, ignoring seeds and custom voicings', () => {
     let [song, layer] = songWithStrumLayer();
-    const picked = createLayer('picked', song);
+    const picked = createLayer('chords', song);
     const single = createLayer('single', song);
     song = { ...song, guitar: { layers: [...song.guitar.layers, picked, single] } };
     song = withChord(song, layer, 60, 'major');
     song = withChord(song, picked.id, 57, 'minor');
-    song = addEvent(song, layer, createSeedChord(62, 4, 4)); // seed D: not a chord
+    song = addEvent(song, layer, legacySeedChord(62, 4, 4)); // seed D: not a chord
     song = addEvent(song, single.id, createNoteEvent(64, 0, 1)); // single note: not a chord
     expect(names(usedChords(song)).sort()).toEqual(['Am', 'C']);
   });

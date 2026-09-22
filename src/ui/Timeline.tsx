@@ -8,14 +8,16 @@ import {
 import { useTransport } from '../audio/transport';
 import { eventLabel } from '../model/labels';
 import { eventRootPitchClass, isLoopOn } from '../model/song';
-import { eighthBeats, evenPhraseBars, loopRange, snapToEighth, songBars, songBeats } from '../model/time';
+import { DRUM_PIECES } from '../model/drums';
+import { eighthBeats, evenPhraseBars, loopRange, positionLabel, snapToEighth, songBars, songBeats } from '../model/time';
 import type { AnyEvent, AnyLayer, MusicalKey, PianoEvent, Song } from '../model/types';
-import { addTimelineSlot, deleteEvent, moveEvent } from '../state/actions';
+import { addTimelineSlot, auditionDrum, deleteEvent, moveEvent, setEventVelocity } from '../state/actions';
 import { useStore } from '../state/store';
 import { toneColor, toneStyle } from './degreeColor';
 import { EdgeHandles } from './EdgeHandles';
 import { HitShape } from './HitShape';
 import { LoopBar } from './LoopBar';
+import { DRUM_ROW_HEIGHT, DrumLane } from './DrumLane';
 import { Sheet } from './Sheet';
 import { isPinching, useTimelineZoom } from './useTimelineZoom';
 
@@ -226,81 +228,107 @@ export function Timeline({ song, layer, colorKey = null }: TimelineProps) {
 
   return (
     <>
-      <div className="timeline" data-testid="timeline" ref={scrollRef}>
-        <div className="timeline-inner" ref={innerRef} style={{ width, minWidth: '100%' }} onClick={onLaneClick}>
-          <div className="ruler" style={{ width: contentWidth, right: 'auto' }}>
-            {Array.from({ length: bars }, (_, i) => (
-              <span key={i} className="bar-label" style={{ left: i * pxPerBar }}>
-                {i + 1}
+      <div className={`timeline-wrap ${layer.type === 'drums' ? 'drums' : ''}`}>
+        {/* Drum row names stay put while the grid scrolls under them. */}
+        {layer.type === 'drums' && (
+          <div className="drum-row-labels" aria-hidden>
+            {DRUM_PIECES.map((p) => (
+              <span key={p.piece} style={{ height: DRUM_ROW_HEIGHT }}>
+                {p.label}
               </span>
             ))}
-            {/* Playback loops the region; an even phrase (1, 2, 4, 8…) loops most naturally. */}
-            <span className={`loop-badge ${badge.even ? 'even' : ''}`} data-testid="loop-badge">
-              {badge.text}
-            </span>
-            <LoopBar
-              song={song}
-              pxPerBeat={pxPerBeat}
-              selected={loopSelected}
-              onSelect={(on) => {
-                setLoopSelected(on);
-                if (on) select(null);
+          </div>
+        )}
+        <div className="timeline" data-testid="timeline" ref={scrollRef}>
+          <div className="timeline-inner" ref={innerRef} style={{ width, minWidth: '100%' }} onClick={onLaneClick}>
+            <div className="ruler" style={{ width: contentWidth, right: 'auto' }}>
+              {Array.from({ length: bars }, (_, i) => (
+                <span key={i} className="bar-label" style={{ left: i * pxPerBar }}>
+                  {i + 1}
+                </span>
+              ))}
+              {/* Playback loops the region; an even phrase (1, 2, 4, 8…) loops most naturally. */}
+              <span className={`loop-badge ${badge.even ? 'even' : ''}`} data-testid="loop-badge">
+                {badge.text}
+              </span>
+              <LoopBar
+                song={song}
+                pxPerBeat={pxPerBeat}
+                selected={loopSelected}
+                onSelect={(on) => {
+                  setLoopSelected(on);
+                  if (on) select(null);
+                }}
+              />
+            </div>
+            {gridLines}
+            <div className="lane" style={{ width: contentWidth, right: 'auto' }}>
+              {/* Outside a custom loop region the lane is shaded (only while looping). */}
+              {!loop.whole && isLoopOn(song) && (
+                <>
+                  <div className="loop-shade" style={{ left: 0, width: loop.start * pxPerBeat }} />
+                  <div className="loop-shade" style={{ left: loop.end * pxPerBeat, right: 0 }} />
+                </>
+              )}
+              {layer.type === 'drums' && (
+                <DrumLane
+                  layer={layer}
+                  totalBeats={totalBeats}
+                  pxPerBeat={pxPerBeat}
+                  step={step}
+                  timeSignature={ts}
+                  onHoldHit={setDeleteTarget}
+                />
+              )}
+              {layer.type !== 'drums' && (layer.events as AnyEvent[]).map((ev) => {
+                const tone = toneColor(eventRootPitchClass(ev), colorKey);
+                return (
+                  <div
+                    key={ev.id}
+                    className={`block ${ev.kind} ${ev.id === selectedId ? 'selected' : ''} ${
+                      ev.kind === 'chord' && ev.quality === 'note' ? 'seed' : ''
+                    } ${tone ? 'keyed' : ''}`}
+                    style={toneStyle(tone, { left: ev.start * pxPerBeat, width: Math.max(18, ev.duration * pxPerBeat - 2) })}
+                    onPointerDown={(e) => onBlockPointerDown(e, ev)}
+                    onPointerMove={onBlockPointerMove}
+                    onPointerUp={onBlockPointerUp}
+                    onPointerCancel={onBlockPointerCancel}
+                    data-event-id={ev.id}
+                    role="button"
+                    aria-label={eventLabel(ev)}
+                  >
+                    {ev.kind === 'piano' ? <PianoStrike event={ev} /> : eventLabel(ev)}
+                    {ev.kind === 'chord' && ev.quality === 'note' && <small>tap Major/Minor</small>}
+                  </div>
+                );
+              })}
+              {selected && layer.type !== 'drums' && <EdgeHandles key={selected.id} layerId={layer.id} event={selected} pxPerBeat={pxPerBeat} timeSignature={ts} />}
+            </div>
+            <div className="cursor" style={{ left: cursor * pxPerBeat }} />
+            {playing && <div className="playhead" style={{ left: playhead * pxPerBeat }} />}
+            <button
+              className="add-slot"
+              style={{ left: contentWidth + 8 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                addTimelineSlot();
               }}
-            />
+              data-testid="add-slot"
+              aria-label="Add timeline slot"
+            >
+              <span>＋</span>
+              <small>Slot</small>
+            </button>
           </div>
-          {gridLines}
-          <div className="lane" style={{ width: contentWidth, right: 'auto' }}>
-            {/* Outside a custom loop region the lane is shaded (only while looping). */}
-            {!loop.whole && isLoopOn(song) && (
-              <>
-                <div className="loop-shade" style={{ left: 0, width: loop.start * pxPerBeat }} />
-                <div className="loop-shade" style={{ left: loop.end * pxPerBeat, right: 0 }} />
-              </>
-            )}
-            {(layer.events as AnyEvent[]).map((ev) => {
-              const tone = toneColor(eventRootPitchClass(ev), colorKey);
-              return (
-                <div
-                  key={ev.id}
-                  className={`block ${ev.kind} ${ev.id === selectedId ? 'selected' : ''} ${
-                    ev.kind === 'chord' && ev.quality === 'note' ? 'seed' : ''
-                  } ${tone ? 'keyed' : ''}`}
-                  style={toneStyle(tone, { left: ev.start * pxPerBeat, width: Math.max(18, ev.duration * pxPerBeat - 2) })}
-                  onPointerDown={(e) => onBlockPointerDown(e, ev)}
-                  onPointerMove={onBlockPointerMove}
-                  onPointerUp={onBlockPointerUp}
-                  onPointerCancel={onBlockPointerCancel}
-                  data-event-id={ev.id}
-                  role="button"
-                  aria-label={eventLabel(ev)}
-                >
-                  {ev.kind === 'piano' ? <PianoStrike event={ev} /> : eventLabel(ev)}
-                  {ev.kind === 'chord' && ev.quality === 'note' && <small>tap Major/Minor</small>}
-                </div>
-              );
-            })}
-            {selected && <EdgeHandles key={selected.id} layerId={layer.id} event={selected} pxPerBeat={pxPerBeat} timeSignature={ts} />}
-          </div>
-          <div className="cursor" style={{ left: cursor * pxPerBeat }} />
-          {playing && <div className="playhead" style={{ left: playhead * pxPerBeat }} />}
-          <button
-            className="add-slot"
-            style={{ left: contentWidth + 8 }}
-            onClick={(e) => {
-              e.stopPropagation();
-              addTimelineSlot();
-            }}
-            data-testid="add-slot"
-            aria-label="Add timeline slot"
-          >
-            <span>＋</span>
-            <small>Slot</small>
-          </button>
         </div>
       </div>
 
       {deleteTarget && (
-        <Sheet title={`Delete ${eventLabel(deleteTarget)}?`} onClose={() => setDeleteTarget(null)}>
+        <Sheet
+          title={deleteTarget.kind === 'drum' ? `${eventLabel(deleteTarget)} at ${positionLabel(deleteTarget.start, ts)}` : `Delete ${eventLabel(deleteTarget)}?`}
+          onClose={() => setDeleteTarget(null)}
+        >
+          {deleteTarget.kind === 'drum' && <DrumHitVelocity layerId={layer.id} hitId={deleteTarget.id} />}
           <button
             className="btn danger wide"
             onClick={() => {
@@ -314,5 +342,31 @@ export function Timeline({ song, layer, colorKey = null }: TimelineProps) {
         </Sheet>
       )}
     </>
+  );
+}
+
+/** Velocity of one held drum hit; one drag is one Undo step, heard on release. */
+function DrumHitVelocity({ layerId, hitId }: { layerId: string; hitId: string }) {
+  const hit = useStore((s) => s.song.drums.layers.find((l) => l.id === layerId)?.events.find((e) => e.id === hitId));
+  const gesture = useRef(0);
+  if (!hit) return null;
+  return (
+    <div className="panel-section">
+      <div className="panel-label">
+        <span>Velocity</span>
+        <span data-testid="drum-velocity-value">{Math.round(hit.velocity * 100)}</span>
+      </div>
+      <input
+        type="range"
+        min={10}
+        max={100}
+        value={Math.round(hit.velocity * 100)}
+        onPointerDown={() => (gesture.current += 1)}
+        onChange={(e) => setEventVelocity(layerId, hitId, Number(e.target.value) / 100, `drumvel:${hitId}:${gesture.current}`)}
+        onPointerUp={() => auditionDrum(hit.piece, hit.velocity)}
+        aria-label="Velocity"
+        data-testid="drum-velocity"
+      />
+    </div>
   );
 }

@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import { App } from './App';
+import { DrumKit } from './audio/drums';
 import { initAudioEngine, installAudioUnlockListeners } from './audio/engine';
 import { installMetronome } from './audio/metronome';
 import { transport } from './audio/transport';
@@ -11,7 +12,10 @@ import './styles.css';
 
 // The V1 instrument is a simple synth. Replace this factory with a sampled
 // guitar later — the song model and sequencer do not change.
-const engine = initAudioEngine((ctx, dest) => new PluckSynth(ctx, dest));
+const engine = initAudioEngine(
+  (ctx, dest) => new PluckSynth(ctx, dest),
+  (ctx, dest) => new DrumKit(ctx, dest),
+);
 // Backgrounding the app stops playback (and with it the metronome).
 installAudioUnlockListeners(engine, () => transport.stop());
 

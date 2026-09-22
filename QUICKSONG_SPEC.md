@@ -59,18 +59,16 @@ V1 development should begin with:
 
 The guitar workflow and UI should be tested and refined before expanding the same underlying concepts to the other instruments. Guitar is intentionally the first instrument because its interaction model is comparatively complex and will establish useful patterns for the rest of the app.
 
-Piano is now enabled as the second instrument (see **7. Piano**). Drums, bass, and vocals remain locked.
+Piano and Drums are now enabled as well (see **7. Piano** and **8. Drums**). Bass and vocals remain locked.
 
 ---
 
 ## 3. Guitar
 
-Guitar has two primary playing types:
+Guitar layers hold one of two kinds of material (see **Chords and Notes** below):
 
-- **Type 1 — Chords**
-- **Type 2 — Single Notes**
-
-Unless otherwise specified, rules described for "chords" apply to both Type 1A and Type 1B.
+- **Chords** — strummed or picked;
+- **Notes** — single notes.
 
 ### Shared Guitar Controls
 
@@ -121,13 +119,7 @@ After a recorded capture, the user should be able to:
 - adjust timing or duration if detection was imperfect;
 - undo or redo edits.
 
-A hummed note can then be used as:
-
-- a Type 2 single note;
-- the starting/root note for a chord;
-- one note in a chord the user builds manually by humming additional notes.
-
-For fast chord creation, the user should be able to hum a note and then choose a simple chord interpretation such as **Major** or **Minor**. The user may instead build the chord note-by-note when the desired harmony is more specific.
+A hummed note becomes a single note on a **Notes** layer (guitar or piano). Chords are picked from the key's chord selector instead (see **Chords**); building chords from hummed notes is no longer part of the flow.
 
 As notes and chords accumulate, QuickSong can progressively infer likely song keys and use that information to prioritize sensible next notes/chords.
 
@@ -147,34 +139,36 @@ The exact default octave can be refined during UI testing.
 
 Dragging a keyboard note directly into the timeline is a possible future interaction, but is intentionally deferred until the Record workflow has been tested; it may be unnecessary if Record mode is sufficiently intuitive.
 
-### Type 1 — Chords
+### Chords and Notes
 
-The user selects chords to play. The selected or inferred song key helps present the chords that naturally belong to that key, but the user ultimately chooses the chord.
+Guitar and Piano work the same way: every layer holds either **Chords** or **Notes**, chosen when the layer is created.
+
+- **Chords** — pick chords from the song's key, make any of them special, then decide *how* they are played.
+- **Notes** — single notes (melodies, riffs), entered with the keyboard or by humming.
+
+### Chords
+
+The user picks chords from the key's **chord selector** — the same one Piano uses (see **7. Piano › Choosing a chord**): the key's diatonic major/minor chords as colour-coded buttons; tap to hear, **Add** to place it at the cursor. The selected or inferred song key presents the chords that naturally belong to it; the user never has to pick a root and then Major/Minor. The special-chord wheel, Change chord, velocity and length work as on Piano.
 
 A chord can begin/change on any V1 rhythmic grid position, including eighth-note subdivisions.
 
-Type 1 has two subtypes:
-
-#### Type 1A — Full Chord / Strum
-
-The chord is played/strummed as a full guitar chord.
-
 **Chord voicing:**
 
-- V1 automatically chooses one sensible standard guitar voicing for each chord.
-- The user can easily test moving the chord/voicing higher or lower when desired.
-- Alternate/advanced voicing systems can come later.
+- Each chord is a real six-string guitar voicing; V1 automatically chooses one sensible standard voicing.
+- **Voicing ↕** tries the next standard voicing higher/lower on the neck (open shape, then E- and A-shape barres).
+- Notes added on the special-chord wheel go on a muted string near the hand position; with all six strings in use they replace a doubled note, never one of the chord's own notes.
+- Alternate/advanced voicing systems can come later. (Hand-editing individual strings is no longer part of the simplified guitar UI.)
 
-**String behavior:**
+### Playing style: together or one note at a time
 
-- Strings that are normally muted for the selected chord/voicing are automatically muted.
-- The user can manually override the default:
-  - unmute a normally muted string;
-  - mute a string that would normally be played.
+Chords can be laid down first and how they are played decided afterwards. A chords layer has a **default style**, shown under the chord selector as *Playing · all chords*:
 
-This allows intentional unusual or imperfect voicings without making the default behavior complicated.
+- **Strum** (guitar) / **Together** (piano) — every note at once. Guitar strums on the layer's strum pattern (below); piano strikes the keys once and holds them for the chord's sustain.
+- **Pick** (guitar) / **Arpeggio** (piano) — the chord's notes one at a time.
 
-**Strumming pattern:**
+Any single chord can **override** the layer: the selected chord's *Playing · this chord* switch offers **Layer** (use the layer's style), or its own Strum/Together or Pick/Arpeggio. Switching styles never loses chords, voicings, timing, velocity, patterns, volume or mute.
+
+**Strumming pattern (guitar):**
 
 Strumming rhythm is separate from the time signature.
 
@@ -198,24 +192,15 @@ The user should be able to define a strumming pattern visually rather than needi
 
 More detailed subdivisions such as sixteenth notes are intentionally excluded from V1.
 
-#### Type 1B — Picked Chord
+**Picking / arpeggio pattern (guitar and piano):**
 
-The same chord/voicing system is used, but the chord is played one string at a time instead of as a full strum.
+- Choose a **preset** — *Up*, *Down*, *Up & down*, *Bass + chord* — at **quarter-note** or **eighth-note** speed. Presets adapt to however many notes each chord has.
+- **Customize** opens a grid: rows are the chord's notes (lowest at the bottom, labelled with the actual notes), columns are the eighth notes of the bar. Tap cells to choose exactly which note plays when; any slot can play several notes or none.
+- The pattern covers one bar and repeats for as long as the chord lasts; each picked note rings until the chord ends (at most a bar).
+- The layer's pattern is the default for its chords; a chord with its own style has its own pattern.
+- Songs saved with the older "picked chords" (one string per beat) keep that order as a custom pattern.
 
-**String behavior:**
-
-- Uses the same automatic chord-specific muted strings as Type 1A.
-- The user can manually override which strings are muted or enabled.
-
-**Picking pattern:**
-
-- The user chooses the order in which the available guitar strings are picked.
-- For V1, keep the rhythm simple: **one pick per beat**. No complex subdivisions or advanced picking rhythms yet.
-- The time signature determines how many beat/pick positions exist within a bar.
-- When a picking pattern is created for one chord, that pattern becomes the default for the other chords in that guitar part.
-- Any individual chord can then override the default and use its own picking pattern.
-
-### Type 2 — Single Notes
+### Notes
 
 The guitar can play individual notes rather than chord shapes.
 
@@ -276,8 +261,8 @@ Each instrument row represents its place in the song timeline.
 
 Currently:
 
-- Guitar and Piano are enabled.
-- Drums, bass, and vocals remain visible but locked/disabled.
+- Drums, Guitar and Piano are enabled.
+- Bass and vocals remain visible but locked/disabled.
 
 **Bottom bar:**
 
@@ -287,24 +272,18 @@ Currently:
 
 Tapping an instrument should enter a focused instrument view.
 
-When Guitar is selected:
+When an instrument is selected (Guitar shown as the example; Piano and Drums work the same way):
 
 - all other instrument editing UI disappears;
 - the screen becomes dedicated to Guitar;
 - existing guitar layers are shown;
 - the user can add, edit, or delete layers.
 
-A new guitar layer asks the user to choose:
-
-- **Type 1A — Full Chord / Strum**
-- **Type 1B — Picked Chord**
-- **Type 2 — Single Notes**
+A new Guitar or Piano layer asks the user to choose **Chords** or **Notes**; a new Drums layer opens straight away. New layers are named *Guitar Chords 1*, *Piano Notes 1*, *Drums 1*, … Each layer card summarises what it holds, e.g. *Chords · Pick · 4 chords*.
 
 Each layer card in the Guitar and Piano overviews draws its events as hits in the same key colours as Song Home: a vertical strike whose height is the event's velocity, with a line dropping off across its duration.
 
-Existing guitar layers can be duplicated from the Guitar overview with a long-press. The duplicate should preserve the layer's musical content/settings, receive independent IDs, and appear immediately after the source so both layers can play simultaneously.
-
-For chord layers, the layer title in Layer Focus is interactive. The user can switch an existing layer between **Strummed Chords** and **Picked Chords** without recreating or losing its chord events, voicings, positions, durations, velocities, volume, or mute state.
+Existing layers can be duplicated from their instrument's overview with a long-press. The duplicate should preserve the layer's musical content/settings, receive independent IDs, and appear immediately after the source so both layers can play simultaneously.
 
 ### Layer Focus
 
@@ -348,22 +327,16 @@ Record should be **OFF by default**. The interface should make the current Recor
 
 ### Chord-Building Interaction
 
-A basic chord-building flow should feel fast:
+Guitar and Piano chords are built the same fast way:
 
-1. Preview a pitch by humming it or tapping the keyboard.
-2. When ready, enable Record and commit the desired note, or otherwise explicitly record it into the layer.
-3. QuickSong inserts the committed note and octave.
-4. User can choose **Major** or **Minor** to build a basic chord around it.
-5. The resulting chord plays immediately.
-6. The user can:
-   - accept it;
-   - undo it;
-   - redo it;
-   - move individual chord tones;
-   - add another hummed/manual note;
-   - remove chord tones.
+1. Tap a chord in the key's chord selector to hear it.
+2. **Add** places it at the cursor (one bar long); it is selected for shaping.
+3. Optionally make it special on the note wheel, change it, or (guitar) try another voicing — each change plays immediately.
+4. Adjust velocity and length/sustain.
+5. **＋ Next chord** moves on to where it ends.
+6. At any point, decide how the chords are played (strum/together or pick/arpeggio) for the whole layer or one chord.
 
-The visual editor should make the individual notes inside the chord understandable without requiring formal music notation.
+Everything is undoable. The chord's notes are shown as chips (added notes highlighted), so the chord is understandable without formal notation. Humming and the keyboard enter single notes on **Notes** layers.
 
 ---
 
@@ -479,7 +452,7 @@ This first version deliberately keeps rhythm simple (see *Deferred* below).
 Projects → Song Home → Piano → Piano Layer
 ```
 
-Piano has one kind of layer, so **+ Layer** creates a layer (*Piano 1*, *Piano 2*, …) and opens it immediately. The Piano overview otherwise behaves like Guitar's: open, mute, delete, and hold a layer to duplicate it. Multiple piano layers play simultaneously, alongside guitar, on Song Home, in project previews and during playback.
+**+ Layer** asks **Chords** or **Notes** (see **3. Guitar › Chords and Notes**) and opens the new layer. A Notes layer works like a guitar Notes layer — keyboard, humming, Record — without the string/fret information. The Piano overview otherwise behaves like Guitar's: open, mute, delete, and hold a layer to duplicate it. Multiple piano layers play simultaneously, alongside guitar, on Song Home, in project previews and during playback.
 
 ### Piano chords are notes, not voicings
 
@@ -529,15 +502,34 @@ On the timeline each piano hit is drawn as what it is: horizontal position = tim
 
 Every piano edit — adding, changing, wheel notes, velocity, sustain, moving, deleting — is undoable with Undo/Redo.
 
+### Playing style
+
+Piano chords play **Together** (struck once, held for the sustain) or as an **Arpeggio**, for the whole layer or per chord, with the presets and grid described in **3. Guitar › Playing style**.
+
 ### Deferred
 
 Intentionally not part of this version:
 
 - tapping in real time to place the next chord, or cycling through a chord sequence while tapping;
-- repeated/intra-chord hits, strumming-style patterns, sixteenth notes, advanced quantization, humanization;
-- inversions/voicing controls and single-note piano composition;
-- humming or keyboard input on piano layers;
+- repeated block-chord rhythms, sixteenth notes, advanced quantization, humanization;
+- inversion/voicing controls for piano chords;
 - realistic piano samples (Piano currently uses the shared V1 synth, struck rather than strummed).
+
+---
+
+## 8. Drums
+
+Drums are a **kick**, **snare** and **hi-hat**, written one hit at a time.
+
+- **+ Layer** on the Drums page creates a drum layer (*Drums 1*, …) and opens it; several drum layers can play together.
+- The editor's timeline is a grid: one row per drum (Hi-hat, Snare, Kick — names stay on the left while the grid scrolls) and one square per **eighth note** across the whole song. **Tap a square** to add a hit there; **tap it again** to remove it. Swiping scrolls without toggling anything.
+- **Hold a hit** to set its velocity (how hard it is played; shown as the square's brightness) or delete it.
+- The pads below the grid (Hi-hat / Snare / Kick) only play the sound, so each drum can be heard before placing it.
+- The drum timeline has the same ruler, golden loop region, zoom, cursor and playhead as the other editors; Play follows the same loop rules. Every edit is undoable.
+- Drums have no pitch, so they never affect the key or its colours; on Song Home and the Drums page they are drawn as gray hits.
+- V1 sounds are synthesised (no samples): a pitch-dropping kick, a noise-and-tone snare and a short, bright hi-hat.
+
+Deferred: more kit pieces (toms, crash/ride, open hi-hat), sixteenth-note hats, beat presets/fills, swing.
 
 ---
 

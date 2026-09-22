@@ -14,6 +14,9 @@ export interface Instrument {
 }
 
 type InstrumentFactory = (ctx: AudioContext, destination: AudioNode) => Instrument;
+
+/** 'melodic' plays guitar and piano; 'drums' plays kick / snare / hi-hat (GM drum numbers). */
+export type InstrumentKind = 'melodic' | 'drums';
 type AudioSessionType = 'playback' | 'play-and-record';
 
 /**
@@ -35,11 +38,14 @@ export function setAudioSessionType(type: AudioSessionType): void {
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
-  private instrument: Instrument | null = null;
+  private instruments: Partial<Record<InstrumentKind, Instrument>> = {};
   private factory: InstrumentFactory;
+  private drumFactory: InstrumentFactory;
 
-  constructor(factory: InstrumentFactory) {
+  /** Without a drum factory, drums play through the melodic instrument (tests). */
+  constructor(factory: InstrumentFactory, drumFactory: InstrumentFactory = factory) {
     this.factory = factory;
+    this.drumFactory = drumFactory;
   }
 
   get context(): AudioContext | null {
@@ -61,7 +67,11 @@ export class AudioEngine {
       this.master = this.ctx.createGain();
       this.master.gain.value = 0.8;
       this.master.connect(this.ctx.destination);
-      this.instrument = this.factory(this.ctx, this.master);
+      const melodic = this.factory(this.ctx, this.master);
+      this.instruments = {
+        melodic,
+        drums: this.drumFactory === this.factory ? melodic : this.drumFactory(this.ctx, this.master),
+      };
     }
     if (this.ctx.state !== 'running') {
       // Start a silent source immediately while we are still inside the user
@@ -89,19 +99,20 @@ export class AudioEngine {
     return this.ctx?.currentTime ?? 0;
   }
 
-  getInstrument(): Instrument | null {
-    return this.instrument;
+  getInstrument(kind: InstrumentKind = 'melodic'): Instrument | null {
+    return this.instruments[kind] ?? null;
   }
 
-  /** Audition a note right now (keyboard taps, chord previews). */
-  async play(midi: number, velocity: number, durationSec: number, offsetSec = 0): Promise<void> {
+  /** Audition a note right now (keyboard taps, chord previews, drum pads). */
+  async play(midi: number, velocity: number, durationSec: number, offsetSec = 0, kind: InstrumentKind = 'melodic'): Promise<void> {
     const ctx = await this.unlock();
-    if (!ctx || !this.instrument) return;
-    this.instrument.noteOn(midi, velocity, ctx.currentTime + 0.01 + offsetSec, durationSec);
+    const instrument = this.getInstrument(kind);
+    if (!ctx || !instrument) return;
+    instrument.noteOn(midi, velocity, ctx.currentTime + 0.01 + offsetSec, durationSec);
   }
 
   stopAll(): void {
-    this.instrument?.allNotesOff();
+    for (const instrument of new Set(Object.values(this.instruments))) instrument?.allNotesOff();
   }
 
   /** Silence everything and pause the audio clock (app sent to the background). */
@@ -120,8 +131,8 @@ export function getAudioEngine(): AudioEngine {
   return engine;
 }
 
-export function initAudioEngine(factory: InstrumentFactory): AudioEngine {
-  engine = new AudioEngine(factory);
+export function initAudioEngine(factory: InstrumentFactory, drumFactory?: InstrumentFactory): AudioEngine {
+  engine = new AudioEngine(factory, drumFactory);
   return engine;
 }
 

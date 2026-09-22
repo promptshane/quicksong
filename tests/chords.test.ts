@@ -1,17 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import {
-  addToneToVoicing,
-  defaultVoicing,
-  placeNote,
-  relabelChord,
-  setStringMuted,
-  singleNoteVoicing,
-  soundingNotes,
-  stringMidi,
-  voicingsFor,
-} from '../src/model/chords';
+import { defaultVoicing, placeNote, soundingNotes, voicingsFor } from '../src/model/chords';
+import { guitarChordShape, setGuitarChord, toggleGuitarChordNote } from '../src/model/guitarChords';
+import { eventLabel } from '../src/model/labels';
 import { midiToName } from '../src/model/music';
-import { buildChord, createSeedChord } from '../src/model/song';
+import { chordTonesOf } from '../src/model/piano';
+import { createGuitarChord } from '../src/model/song';
 
 const names = (v: ReturnType<typeof defaultVoicing>) => soundingNotes(v).map((n) => midiToName(n.midi));
 
@@ -57,37 +50,40 @@ describe('note placement', () => {
     expect(placeNote(60)).toEqual({ index: 4, fret: 1 }); // C4 on B string fret 1
     expect(placeNote(64)).toEqual({ index: 5, fret: 0 }); // E4 open high e
   });
-
-  it('builds a single-note voicing with the other strings muted', () => {
-    const v = singleNoteVoicing(57); // A3
-    expect(soundingNotes(v)).toHaveLength(1);
-    expect(stringMidi(soundingNotes(v)[0].index, v[soundingNotes(v)[0].index])).toBe(57);
-  });
-
-  it('adds tones to muted strings without displacing existing ones', () => {
-    let v = singleNoteVoicing(57);
-    v = addToneToVoicing(v, 60);
-    v = addToneToVoicing(v, 64);
-    expect(names(v)).toEqual(['A3', 'C4', 'E4']);
-  });
 });
 
-describe('chord events', () => {
-  it('builds a chord from a seed note and relabels after edits', () => {
-    const seed = createSeedChord(57, 0, 4);
-    expect(seed.quality).toBe('note');
-    expect(seed.root).toBe(9);
-    const am = buildChord(seed, 'minor');
-    expect(am.quality).toBe('minor');
+describe('guitar chords in the shared chord workflow', () => {
+  it('a chord picked from the key gets its standard guitar voicing', () => {
+    const am = createGuitarChord(9, 'minor', 0, 4);
+    expect(am).toMatchObject({ kind: 'chord', root: 9, quality: 'minor' });
     expect(names(am.strings)).toEqual(['A2', 'E3', 'A3', 'C4', 'E4']);
+    expect(guitarChordShape(am)?.notes).toEqual([45, 52, 57, 60, 64]);
+    expect(eventLabel(am)).toBe('Am');
+  });
 
-    // Muting the C makes it no longer a triad -> custom
-    const noThird = relabelChord({ ...am, strings: setStringMuted(am.strings, 4, true) });
-    expect(noThird.quality).toBe('custom');
+  it('wheel notes go on a muted string, keep the chord and toggle off again', () => {
+    const am = createGuitarChord(9, 'minor', 0, 4); // x02210: low E muted
+    const am7 = toggleGuitarChordNote(am, 7); // G
+    expect(names(am7.strings)).toContain('G2'); // on the low E string, 3rd fret
+    expect(chordTonesOf({ root: 9, quality: 'minor' })).toEqual(new Set([9, 0, 4]));
+    expect(eventLabel(am7)).toBe('Am7');
+    expect(am7.quality).toBe('minor'); // still remembers the chord it was picked as
+    expect(names(toggleGuitarChordNote(am7, 7).strings)).toEqual(names(am.strings)); // taken off again
+    expect(toggleGuitarChordNote(am, 0)).toBe(am); // C is a chord tone
+  });
 
-    // Re-enabling restores the label
-    const back = relabelChord({ ...noThird, strings: setStringMuted(noThird.strings, 4, false) });
-    expect(back.quality).toBe('minor');
-    expect(back.root).toBe(9);
+  it('with every string in use, a doubled note makes room rather than a chord tone', () => {
+    const e = createGuitarChord(4, 'major', 0, 4); // 022100: E B E G# B E
+    const e7 = toggleGuitarChordNote(e, 2); // D
+    const pcs = soundingNotes(e7.strings).map((n) => n.midi % 12);
+    expect(pcs).toContain(2);
+    for (const tone of [4, 8, 11]) expect(pcs).toContain(tone); // E, G#, B all still there
+  });
+
+  it('changing the chord resets to the new chord\'s voicing', () => {
+    const am7 = toggleGuitarChordNote(createGuitarChord(9, 'minor', 2, 3, 0.4), 7);
+    const f = setGuitarChord(am7, 5, 'major');
+    expect(f).toMatchObject({ root: 5, quality: 'major', start: 2, duration: 3, velocity: 0.4 });
+    expect(f.strings).toEqual(defaultVoicing(5, 'major'));
   });
 });

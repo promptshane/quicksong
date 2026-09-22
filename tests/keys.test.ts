@@ -4,15 +4,15 @@ import { createPianoChord } from '../src/model/piano';
 import {
   addEvent,
   assumedKey,
-  buildChord,
+  createGuitarChord,
   createLayer,
   createNoteEvent,
-  createSeedChord,
   createSong,
   eventRootPitchClass,
   setManualKey,
   usedPitchClasses,
 } from '../src/model/song';
+import { legacySeedChord } from './helpers';
 
 const C = 0, Cs = 1, D = 2, Ds = 3, E = 4, F = 5, Fs = 6, G = 7, Gs = 8, A = 9, As = 10, B = 11;
 
@@ -86,14 +86,14 @@ describe('usedPitchClasses', () => {
   it('collects note pitches and sounding chord tones only', () => {
     let song = createSong();
     const single = createLayer('single', song);
-    const strum = createLayer('strum', song);
+    const strum = createLayer('chords', song);
     song = { ...song, guitar: { layers: [single, strum] } };
     expect(usedPitchClasses(song)).toEqual(new Set());
     song = addEvent(song, single.id, createNoteEvent(62, 0, 1)); // D
-    song = addEvent(song, strum.id, buildChord(createSeedChord(57, 0, 4), 'minor')); // Am: A C E
+    song = addEvent(song, strum.id, createGuitarChord(9, 'minor', 0, 4)); // Am: A C E
     expect(usedPitchClasses(song)).toEqual(new Set([D, A, C, E]));
     // A seed chord contributes just its one tone.
-    song = addEvent(song, strum.id, createSeedChord(66, 4, 4)); // F#
+    song = addEvent(song, strum.id, legacySeedChord(66, 4, 4)); // F#
     expect(usedPitchClasses(song)).toEqual(new Set([D, A, C, E, Fs]));
   });
 });
@@ -111,7 +111,7 @@ describe('scaleDegree and event colouring inputs', () => {
 
   it('an event is coloured by its note or its chord root, in the song key', () => {
     expect(eventRootPitchClass(createNoteEvent(64, 0, 1))).toBe(4);
-    expect(eventRootPitchClass(buildChord(createSeedChord(57, 0, 4), 'minor'))).toBe(9);
+    expect(eventRootPitchClass(createGuitarChord(9, 'minor', 0, 4))).toBe(9);
     expect(eventRootPitchClass(createPianoChord(7, 'major', 0, 4))).toBe(7);
     expect(assumedKey(createSong())).toBeNull();
     expect(assumedKey(setManualKey(createSong(), { tonic: 2, quality: 'major' }))).toEqual({ tonic: 2, quality: 'major' });

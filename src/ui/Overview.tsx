@@ -33,7 +33,9 @@ export function Overview({ song, layer, showPlayhead = true, hits = false, color
         <div key={i} className="bar-line" style={{ left: pct(i * song.timeSignature.beatsPerBar) }} />
       ))}
       {layer.events.map((ev) => {
-        const degree = colorKey ? scaleDegree(eventRootPitchClass(ev), colorKey) : undefined;
+        const pc = eventRootPitchClass(ev);
+        // Drum hits have no pitch: they keep the drum colour.
+        const degree = colorKey && pc !== null ? scaleDegree(pc, colorKey) : undefined;
         return (
           <div
             key={ev.id}

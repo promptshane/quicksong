@@ -94,16 +94,45 @@ export interface ChordEvent extends EventBase {
    */
   quality: ChordQuality | 'note' | 'custom';
   strings: Voicing;
-  /**
-   * Picked-chord layers only: string numbers (6..1) to pick, one per beat.
-   * null = use the layer's default pattern.
-   */
-  pickPattern: number[] | null;
+  /** This chord's own playing style; absent = the layer's. */
+  styleOverride?: ChordStyleOverride;
 }
 
 export type StrumSlot = 'down' | 'up' | null;
 
-export type GuitarLayerType = 'strum' | 'picked' | 'single';
+/**
+ * How a chords layer (guitar or piano) plays each chord:
+ * 'together' — all notes at once (guitar: strummed on the strum pattern;
+ * piano: one strike); 'arpeggio' — one note at a time on an arpeggio pattern
+ * (guitar: picked).
+ */
+export type ChordStyle = 'together' | 'arpeggio';
+
+/** Named arpeggio shapes; they adapt to however many notes a chord has. */
+export type ArpPreset = 'up' | 'down' | 'updown' | 'bass';
+
+/**
+ * How a chord's notes are played one at a time across each bar, on the
+ * eighth-note grid. A preset generates the steps for each chord; 'custom'
+ * spells them out: per eighth slot of the bar, which chord notes sound
+ * (0 = the lowest note). Rows past a chord's highest note play its top note.
+ */
+export interface ArpPattern {
+  preset: ArpPreset | 'custom';
+  /** Presets: one note per quarter note or per eighth note. */
+  rate: 'quarter' | 'eighth';
+  /** Custom only: one entry per eighth slot in a bar. */
+  steps?: number[][];
+}
+
+/** A single chord's own style, overriding its layer's default. */
+export interface ChordStyleOverride {
+  style: ChordStyle;
+  arp: ArpPattern;
+}
+
+/** Guitar layer kinds: chords, or single notes. */
+export type GuitarLayerType = 'chords' | 'single';
 
 interface GuitarLayerBase {
   id: string;
@@ -118,22 +147,19 @@ export interface SingleNoteLayer extends GuitarLayerBase {
   events: NoteEvent[];
 }
 
-export interface StrumLayer extends GuitarLayerBase {
-  type: 'strum';
+/** Guitar chords: strummed ('together') or picked ('arpeggio'), switchable any time. */
+export interface GuitarChordLayer extends GuitarLayerBase {
+  type: 'chords';
   events: ChordEvent[];
-  /** One slot per eighth note in a bar. */
+  style: ChordStyle;
+  /** Strumming: one slot per eighth note in a bar. */
   strumPattern: StrumSlot[];
+  /** Picking. */
+  arp: ArpPattern;
 }
 
-export interface PickedLayer extends GuitarLayerBase {
-  type: 'picked';
-  events: ChordEvent[];
-  /** Default picking order as string numbers (6..1), one per beat. */
-  pickPattern: number[];
-}
-
-export type GuitarLayer = SingleNoteLayer | StrumLayer | PickedLayer;
-export type ChordLayer = StrumLayer | PickedLayer;
+export type GuitarLayer = SingleNoteLayer | GuitarChordLayer;
+export type ChordLayer = GuitarChordLayer;
 
 /**
  * One piano hit. Unlike a guitar chord this is not a fingering: it is the set
@@ -151,8 +177,11 @@ export interface PianoEvent extends EventBase {
   quality: ChordQuality;
   /** Sounding MIDI notes, low to high, no duplicates. */
   notes: number[];
+  /** This chord's own playing style; absent = the layer's. */
+  styleOverride?: ChordStyleOverride;
 }
 
+/** Piano chords: struck together, or arpeggiated. */
 export interface PianoLayer {
   id: string;
   type: 'piano';
@@ -161,10 +190,41 @@ export interface PianoLayer {
   volume: number;
   muted: boolean;
   events: PianoEvent[];
+  style: ChordStyle;
+  arp: ArpPattern;
 }
 
-export type AnyLayer = GuitarLayer | PianoLayer;
-export type AnyEvent = NoteEvent | ChordEvent | PianoEvent;
+/** Piano single notes (melodies), entered like guitar single notes. */
+export interface PianoNotesLayer {
+  id: string;
+  type: 'pianoNotes';
+  name: string;
+  volume: number;
+  muted: boolean;
+  events: NoteEvent[];
+}
+
+export type AnyPianoLayer = PianoLayer | PianoNotesLayer;
+
+export type DrumPiece = 'kick' | 'snare' | 'hat';
+
+/** One drum hit, placed individually on the eighth-note grid. */
+export interface DrumHit extends EventBase {
+  kind: 'drum';
+  piece: DrumPiece;
+}
+
+export interface DrumLayer {
+  id: string;
+  type: 'drums';
+  name: string;
+  volume: number;
+  muted: boolean;
+  events: DrumHit[];
+}
+
+export type AnyLayer = GuitarLayer | AnyPianoLayer | DrumLayer;
+export type AnyEvent = NoteEvent | ChordEvent | PianoEvent | DrumHit;
 
 export interface Song {
   version: 1;
@@ -189,7 +249,11 @@ export interface Song {
   };
   /** Absent in songs saved before Piano existed; `normalizeStoredSong` fills it in. */
   piano: {
-    layers: PianoLayer[];
+    layers: AnyPianoLayer[];
+  };
+  /** Absent in songs saved before Drums existed; `normalizeStoredSong` fills it in. */
+  drums: {
+    layers: DrumLayer[];
   };
 }
 
