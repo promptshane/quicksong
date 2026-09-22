@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { changeEventDuration, moveEvent, setEventVelocity } from '../state/actions';
 import { durationLabel, eighthBeats, positionLabel } from '../model/time';
 import type { AnyEvent, TimeSignature } from '../model/types';
@@ -11,6 +12,8 @@ interface EventControlsProps {
 /** Duration, position and velocity — shared by notes and chords. */
 export function EventControls({ layerId, event, timeSignature }: EventControlsProps) {
   const step = eighthBeats(timeSignature);
+  // One velocity drag is one Undo step.
+  const gesture = useRef(0);
   return (
     <>
       <div className="steppers">
@@ -49,7 +52,8 @@ export function EventControls({ layerId, event, timeSignature }: EventControlsPr
           min={10}
           max={100}
           value={Math.round(event.velocity * 100)}
-          onChange={(e) => setEventVelocity(layerId, event.id, Number(e.target.value) / 100)}
+          onPointerDown={() => (gesture.current += 1)}
+          onChange={(e) => setEventVelocity(layerId, event.id, Number(e.target.value) / 100, `vel:${event.id}:${gesture.current}`)}
           aria-label="Velocity"
         />
       </div>

@@ -929,6 +929,20 @@ input[type='range'] {
 .block.seed {
   background: var(--warn);
 }
+/* Key colours (see ui/degreeColor.ts): guitar blocks are filled with it,
+   piano hits drawn in it. */
+.block.keyed {
+  background: var(--tone);
+}
+.block.piano.keyed {
+  background: color-mix(in srgb, var(--tone) 9%, transparent);
+  color: var(--tone);
+}
+/* A guitar seed note still waiting for Major/Minor. */
+.block.seed.keyed:not(.selected) {
+  border-style: dashed;
+  border-color: rgba(11, 16, 32, 0.6);
+}
 .block small {
   font-weight: 400;
   opacity: 0.75;
@@ -1364,6 +1378,8 @@ input[type='range'] {
   z-index: 40;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
   white-space: nowrap;
+  /* Informational only: never swallow a tap meant for the keyboard below. */
+  pointer-events: none;
 }
 
 @media (min-width: 700px) {
@@ -1488,7 +1504,10 @@ input[type='range'] {
 .palette-chord {
   min-height: 56px;
   border-radius: var(--radius);
-  background: var(--bg-3);
+  /* Subtly carries the chord's key colour (see ui/degreeColor.ts). */
+  background: color-mix(in srgb, var(--tone, var(--bg-3)) 14%, var(--bg-3));
+  color: var(--tone, var(--text));
+  box-shadow: inset 0 -3px 0 var(--tone, transparent);
   font-size: 20px;
   font-weight: 650;
 }
@@ -1496,8 +1515,9 @@ input[type='range'] {
   filter: brightness(1.25);
 }
 .palette-chord.on {
-  background: var(--piano);
-  color: #1d1708;
+  background: var(--tone, var(--piano));
+  color: #14110a;
+  box-shadow: none;
 }
 
 .piano-chord-head {
@@ -1512,7 +1532,7 @@ input[type='range'] {
   gap: 8px;
   min-height: var(--tap);
   min-width: 0;
-  color: var(--piano);
+  color: var(--tone, var(--piano));
 }
 .piano-chord-name b {
   font-size: 26px;
@@ -1557,8 +1577,8 @@ input[type='range'] {
   stroke-width: 0.5;
 }
 .note-wheel-shape polygon {
-  fill: rgba(240, 217, 168, 0.12);
-  stroke: var(--piano);
+  fill: color-mix(in srgb, var(--tone, var(--piano)) 12%, transparent);
+  stroke: var(--tone, var(--piano));
   stroke-width: 0.6;
   stroke-linejoin: round;
 }
@@ -1576,7 +1596,7 @@ input[type='range'] {
 .note-wheel-hub b {
   font-size: 18px;
   line-height: 1.2;
-  color: var(--piano);
+  color: var(--tone, var(--piano));
 }
 .note-wheel-note {
   position: absolute;
@@ -1592,7 +1612,7 @@ input[type='range'] {
 }
 /* The chord's own notes: fixed and solid. */
 .note-wheel-note[data-state='chord'] {
-  background: var(--piano);
+  background: var(--tone, var(--piano));
   color: #1d1708;
   opacity: 1;
 }
@@ -1648,4 +1668,23 @@ input[type='range'] {
   flex: 1;
   text-align: center;
   white-space: nowrap;
+}
+
+/* Buttons that act on a chord carry its key colour as an underline. */
+.btn.tinted {
+  box-shadow: inset 0 -3px 0 var(--tone, transparent);
+}
+
+/* Loop length on the timeline ruler: accent when it is an even phrase. */
+.loop-badge {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.loop-badge.even {
+  color: var(--accent);
 }

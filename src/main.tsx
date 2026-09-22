@@ -25,6 +25,11 @@ installMetronome((listener) => {
 
 registerSW({ immediate: true });
 
+// Edits, Undo and Redo made while the song plays are heard on the next note.
+useStore.subscribe((s, prev) => {
+  if (s.song !== prev.song) transport.refresh(s.song);
+});
+
 void hydrateStore();
 
 createRoot(document.getElementById('root')!).render(

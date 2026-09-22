@@ -1,11 +1,14 @@
 import { NOTE_NAMES } from '../model/music';
 import { pianoAddedPitchClasses, pianoChordName, pianoChordTones } from '../model/piano';
 import type { PianoEvent, PitchClass } from '../model/types';
+import { toneStyle } from './degreeColor';
 
 interface NoteWheelProps {
   event: PianoEvent;
   /** Pitch classes of the song's key: the natural choices. */
   scale: Set<PitchClass>;
+  /** The chord's key colour, used for its own notes and name. */
+  tone?: string;
   onToggle: (pc: PitchClass) => void;
 }
 
@@ -26,7 +29,7 @@ const RING_RADIUS = 40;
  * notes are the bright natural choices, out-of-key notes are quieter but
  * still one tap away. Tapping an added note takes it off again.
  */
-export function NoteWheel({ event, scale, onToggle }: NoteWheelProps) {
+export function NoteWheel({ event, scale, tone, onToggle }: NoteWheelProps) {
   const tones = pianoChordTones(event);
   const added = new Set(pianoAddedPitchClasses(event));
   const notes = Array.from({ length: 12 }, (_, step) => {
@@ -41,7 +44,7 @@ export function NoteWheel({ event, scale, onToggle }: NoteWheelProps) {
     .join(' ');
 
   return (
-    <div className="note-wheel" data-testid="note-wheel">
+    <div className="note-wheel" data-testid="note-wheel" style={toneStyle(tone)}>
       <svg className="note-wheel-shape" viewBox="0 0 100 100" aria-hidden>
         <circle cx="50" cy="50" r={RING_RADIUS} />
         <polygon points={shape} />

@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { transport, useTransport } from '../audio/transport';
 import { activeStringNumbers } from '../model/chords';
 import { dimmedPitchClasses } from '../model/keys';
 import { midiToName } from '../model/music';
-import { LAYER_TYPE_LABELS, convertChordLayerType, findLayer, usedPitchClasses } from '../model/song';
+import { LAYER_TYPE_LABELS, assumedKey, convertChordLayerType, findLayer, usedPitchClasses } from '../model/song';
 import { useHumming } from '../pitch/useHumming';
 import {
   addToneToSelectedChord,
@@ -13,7 +13,7 @@ import {
   setLayerPickPattern,
   setStrumSlot,
 } from '../state/actions';
-import { selectCanRedo, selectCanUndo, useStore } from '../state/store';
+import { useStore } from '../state/store';
 import { ChordPanel } from './ChordPanel';
 import { HumStatus } from './HumStatus';
 import { Keyboard } from './Keyboard';
@@ -22,6 +22,7 @@ import { PickPattern } from './PickPattern';
 import { Sheet } from './Sheet';
 import { StrumGrid } from './StrumGrid';
 import { Timeline } from './Timeline';
+import { UndoRedo } from './UndoRedo';
 import { toast } from './toastStore';
 import { KEYBOARD_MAX_BASE, KEYBOARD_MIN_BASE, useKeyboardFollow } from './useKeyboardFollow';
 
@@ -34,10 +35,6 @@ export function LayerEditor({ layerId }: { layerId: string }) {
   const cursor = useStore((s) => s.cursorBeat);
   const setView = useStore((s) => s.setView);
   const commit = useStore((s) => s.commit);
-  const undo = useStore((s) => s.undo);
-  const redo = useStore((s) => s.redo);
-  const canUndo = useStore(selectCanUndo);
-  const canRedo = useStore(selectCanRedo);
   const keyboardBase = useStore((s) => s.keyboardBase);
   const setKeyboardBase = useStore((s) => s.setKeyboardBase);
   const recording = useStore((s) => s.recording);
@@ -56,6 +53,7 @@ export function LayerEditor({ layerId }: { layerId: string }) {
   // Possible-key guidance comes from committed material only; previews
   // never touch the song, so they can never influence this.
   const dimmed = useMemo(() => dimmedPitchClasses(song.key, usedPitchClasses(song)), [song]);
+  const songKey = useMemo(() => assumedKey(song), [song]);
 
   const hum = useHumming(({ notes }) => {
     if (!layer) return;
@@ -77,19 +75,13 @@ export function LayerEditor({ layerId }: { layerId: string }) {
   // While listening, keep the hummed note on screen.
   useKeyboardFollow(hum.state.liveMidi, hum.state.frame, humActive && showKeys);
 
-  if (!layer) {
-    return (
-      <div className="screen">
-        <div className="empty-state">
-          This layer no longer exists.
-          <br />
-          <button className="btn" onClick={() => setView({ name: 'guitar' })}>
-            Back to Guitar
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // The open layer can vanish through Undo (of adding it) or Redo (of
+  // deleting it). Return to the Guitar page, where Redo/Undo can bring it back.
+  useEffect(() => {
+    if (!layer) setView({ name: 'guitar' });
+  }, [layer, setView]);
+
+  if (!layer) return null;
 
   const onKey = (midi: number) => {
     // "Add to chord" is an explicit edit of existing material, so it does
@@ -123,7 +115,8 @@ export function LayerEditor({ layerId }: { layerId: string }) {
       return;
     }
     if (transport.isPlaying) transport.stop(cursor);
-    else void transport.play(song, cursor);
+    // Play from the cursor to the end, then loop the whole song.
+    else void transport.play(song, cursor, { loop: true, loopFrom: 0 });
   };
 
   const isChord = layer.type !== 'single';
@@ -150,16 +143,11 @@ export function LayerEditor({ layerId }: { layerId: string }) {
           </button>
         )}
         <div className="header-side right">
-          <button className="btn icon ghost" onClick={undo} disabled={!canUndo} aria-label="Undo" data-testid="undo">
-            ↶
-          </button>
-          <button className="btn icon ghost" onClick={redo} disabled={!canRedo} aria-label="Redo" data-testid="redo">
-            ↷
-          </button>
+          <UndoRedo />
         </div>
       </div>
 
-      <Timeline song={song} layer={layer} />
+      <Timeline song={song} layer={layer} colorKey={songKey} />
 
       <div className="panel">
         {layer.type === 'strum' && (
@@ -192,7 +180,7 @@ export function LayerEditor({ layerId }: { layerId: string }) {
 
         {selected?.kind === 'note' && <NotePanel layerId={layerId} note={selected} timeSignature={song.timeSignature} />}
         {selectedChord && layer.type !== 'single' && (
-          <ChordPanel layer={layer} chord={selectedChord} timeSignature={song.timeSignature} />
+          <ChordPanel layer={layer} chord={selectedChord} timeSignature={song.timeSignature} songKey={songKey} />
         )}
 
         {!selected && (

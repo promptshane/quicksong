@@ -103,3 +103,15 @@ export function isDownbeat(beat: number, beatsPerBar: number): boolean {
   const within = ((beat % beatsPerBar) + beatsPerBar) % beatsPerBar;
   return within < 1e-6 || beatsPerBar - within < 1e-6;
 }
+
+/**
+ * Loops are always whole bars (the timeline is built from bars), so every
+ * loop lands back on a downbeat in any time signature. What makes a loop feel
+ * "even" is its phrase length: 1, 2, 4, 8, 16… bars. Returns the bar count of
+ * the next even phrase at or above `bars` (equal to `bars` when it is even).
+ */
+export function evenPhraseBars(bars: number): number {
+  let phrase = 1;
+  while (phrase < bars) phrase *= 2;
+  return phrase;
+}

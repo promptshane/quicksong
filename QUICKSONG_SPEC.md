@@ -265,7 +265,7 @@ Each instrument row represents its place in the song timeline.
 - If it has multiple layers, the row visually divides to show them.
 - Clips/events should appear at their actual positions across the song timeline.
 - Each event is drawn as a hit: a vertical strike whose height is its velocity, with a line dropping off across its duration.
-- Events are colour-coded by their place in the song's key (the manual key, or Auto's assumed key): a chord by its root's scale degree, a single note by its own. Rainbow order — **I red, ii orange, iii yellow, IV green, V blue, vi violet, vii pink** (minor keys likewise from i) — so the same chord is the same colour on guitar and piano and progressions can be read at a glance. Anything outside the key is neutral gray.
+- Events are colour-coded by their place in the song's key (the manual key, or Auto's assumed key): a chord by its root's scale degree, a single note by its own. The same colours are used everywhere a chord appears — Song Home, the layer pages, the editing timelines (guitar blocks filled with it, piano hits drawn in it), and subtly on the buttons that pick or change a chord (the piano chord palette, the note wheel, Guitar's Major/Minor). Rainbow order — **I red, ii orange, iii yellow, IV green, V blue, vi violet, vii pink** (minor keys likewise from i) — so the same chord is the same colour on guitar and piano and progressions can be read at a glance. Anything outside the key is neutral gray.
 - A slim legend under the top bar shows the key's chords in their colours (e.g. C Dm Em F G Am Bdim).
 - Empty timeline length should not accumulate automatically.
 - The app should **not** append a trailing empty bar/slot just because content exists.
@@ -322,6 +322,10 @@ Persistent layer-editing actions should include:
 - **Record** toggle/state
 - **Hum input**
 - **Manual note input**
+
+Playing from a layer editor plays from the cursor to the end of the song, then **loops the whole song** from bar 1 until paused. Edits, Undo and Redo made while it plays are heard on the next pass without restarting, and the loop follows slots added or removed along the way.
+
+The timeline ruler shows the loop length (e.g. **⟲ 4 bars**). Because the timeline is built from whole bars, a loop always lands back on a downbeat in any time signature — no padding is needed. What makes a loop feel even is its phrase length: 1, 2, 4, 8, 16… bars are highlighted; any other length says how many slots would make it even (e.g. *⟲ 3 bars · +1 for an even 4*). Irregular lengths remain fully allowed; nothing is added automatically.
 
 Moving an event takes a deliberate selection first: tap a note/chord to select it, then drag the selected one to move it. Swiping across unselected events scrolls the timeline, so rewinding or fast-forwarding never moves anything by accident.
 
@@ -432,6 +436,8 @@ Projects **autosave continuously** while being edited. Autosave is persistence o
 - an edit remains undoable even after it has been persisted.
 
 Example: the user deletes a chord → autosave persists that state → the user presses Undo → the chord comes back normally → the restored state autosaves in turn. Undo/Redo is an in-memory editing history for the currently open project and is independent of persistence timing.
+
+Undo/Redo history covers the whole project, so the **Undo / Redo** controls appear on every screen inside a project (Song Home, instrument pages and layer editors), and each press briefly says what it changed (e.g. *Undo: Tempo 100 → 104*, *Undo: Delete Am · Piano 1*) — a change made on another screen is never invisible. Only real changes are recorded: an edit that changes nothing (moving a note to where it already is, + at the tempo limit) adds no step. One continuous adjustment is one step: a slider drag, or all tempo changes made in one visit to the Tempo sheet. If Undo removes the layer currently open (undoing its creation), the app returns to that instrument's page, where Redo brings it back.
 
 ### Switching Projects
 

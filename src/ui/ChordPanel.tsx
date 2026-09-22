@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { activeStringNumbers, soundingNotes, stringNumber } from '../model/chords';
 import { NOTE_NAMES, midiToName } from '../model/music';
-import type { ChordEvent, ChordLayer, TimeSignature } from '../model/types';
+import type { ChordEvent, ChordLayer, MusicalKey, TimeSignature } from '../model/types';
 import {
   auditionChord,
   cycleVoicing,
@@ -10,6 +10,7 @@ import {
   shiftChordTone,
   toggleStringMute,
 } from '../state/actions';
+import { toneColor, toneStyle } from './degreeColor';
 import { EventControls } from './EventControls';
 import { PickPattern } from './PickPattern';
 import { StringsView } from './StringsView';
@@ -18,14 +19,17 @@ interface ChordPanelProps {
   layer: ChordLayer;
   chord: ChordEvent;
   timeSignature: TimeSignature;
+  /** The song key, for colouring the chord by its degree. */
+  songKey: MusicalKey | null;
 }
 
-export function ChordPanel({ layer, chord, timeSignature }: ChordPanelProps) {
+export function ChordPanel({ layer, chord, timeSignature, songKey }: ChordPanelProps) {
   const [selectedString, setSelectedString] = useState<number | null>(null);
   const [showStrings, setShowStrings] = useState(false);
   const tones = soundingNotes(chord.strings);
   const isSeed = chord.quality === 'note';
   const canCycle = chord.quality === 'major' || chord.quality === 'minor';
+  const tone = toneStyle(toneColor(chord.root, songKey));
 
   return (
     <div className="panel-section" data-testid="chord-panel">
@@ -38,14 +42,16 @@ export function ChordPanel({ layer, chord, timeSignature }: ChordPanelProps) {
 
       <div className="btn-row">
         <button
-          className={`btn ${chord.quality === 'major' ? 'active' : ''}`}
+          className={`btn tinted ${chord.quality === 'major' ? 'active' : ''}`}
+          style={tone}
           onClick={() => makeChord(layer.id, chord.id, 'major')}
           data-testid="make-major"
         >
           {NOTE_NAMES[chord.root]} major
         </button>
         <button
-          className={`btn ${chord.quality === 'minor' ? 'active' : ''}`}
+          className={`btn tinted ${chord.quality === 'minor' ? 'active' : ''}`}
+          style={tone}
           onClick={() => makeChord(layer.id, chord.id, 'minor')}
           data-testid="make-minor"
         >

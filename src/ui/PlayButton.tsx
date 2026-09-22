@@ -1,5 +1,4 @@
 import { transport, useTransport } from '../audio/transport';
-import { songBeats } from '../model/time';
 import { useStore } from '../state/store';
 
 /** Play/pause the whole song from the beginning, looping at the content end. */
@@ -15,11 +14,8 @@ export function PlayButton({ small = false }: { small?: boolean }) {
       return;
     }
 
-    const endBeat = songBeats(song);
-    void transport.play(song, 0, {
-      endBeat,
-      loop: true,
-    });
+    // No explicit end: the loop follows slots added or removed while playing.
+    void transport.play(song, 0, { loop: true });
   };
 
   return (

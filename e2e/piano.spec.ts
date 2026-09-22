@@ -251,3 +251,73 @@ test('backgrounding the app stops playback (and the metronome with it)', async (
   });
   await expect(page.getByTestId('play')).toHaveAttribute('aria-label', 'Play');
 });
+
+test('editor playback loops back to bar 1; the ruler shows the loop length', async ({ page }) => {
+  await page.getByRole('button', { name: 'BPM' }).click();
+  await page.getByRole('slider', { name: 'BPM slider' }).fill('220');
+  await page.getByRole('button', { name: 'Done' }).click();
+  await openNewPianoLayer(page);
+  await addChord(page, 'C');
+  await expect(page.getByTestId('loop-badge')).toHaveText('⟲ 1 bar');
+  await expect(page.getByTestId('loop-badge')).toHaveClass(/even/);
+
+  // One bar at 220 BPM is ~1.1 s: after 1.6 s it is still going round.
+  await page.getByTestId('play').click();
+  await page.waitForTimeout(1600);
+  await expect(page.getByTestId('play')).toHaveAttribute('aria-label', 'Pause');
+  await expect(page.locator('.timeline .playhead')).toHaveCount(1);
+  await page.getByTestId('play').click();
+  await expect(page.getByTestId('play')).toHaveAttribute('aria-label', 'Play');
+
+  await page.getByTestId('next-piano-chord').click();
+  await expect(page.getByTestId('loop-badge')).toHaveText('⟲ 2 bars');
+  await addChord(page, 'G');
+  await page.getByTestId('next-piano-chord').click();
+  await expect(page.getByTestId('loop-badge')).toHaveText('⟲ 3 bars · +1 for an even 4');
+  await expect(page.getByTestId('loop-badge')).not.toHaveClass(/even/);
+});
+
+test('chords carry their key colour in the editor, on buttons and in the wheel', async ({ page }) => {
+  await openNewPianoLayer(page);
+  // Nothing committed yet: colours follow the C major starting guess.
+  await expect(page.locator('.palette-chord[data-chord="C"]')).toHaveAttribute('style', /--tone: var\(--deg-0\)/);
+  await expect(page.locator('.palette-chord[data-chord="G"]')).toHaveAttribute('style', /--tone: var\(--deg-4\)/);
+  await addChord(page, 'Am');
+  await expect(page.locator('.block.piano.keyed')).toHaveAttribute('style', /--tone: var\(--deg-5\)/);
+  await expect(page.locator('.piano-chord-name')).toHaveAttribute('style', /--tone: var\(--deg-5\)/);
+  await page.getByTestId('open-note-wheel').click();
+  await expect(page.getByTestId('note-wheel')).toHaveAttribute('style', /--tone: var\(--deg-5\)/);
+  await page.getByRole('button', { name: 'Done' }).click();
+
+  // Guitar: blocks are filled with the key colour; Major/Minor carry it too.
+  // Lock C major first — in Auto, more A material would re-read the song as F major.
+  await page.getByRole('button', { name: 'Back to piano' }).click();
+  await page.getByRole('button', { name: 'Back to song' }).click();
+  await page.getByRole('button', { name: 'Key' }).click();
+  await page.getByTestId('key-lock').click();
+  await expect(page.getByTestId('key-lock')).toHaveText('Locked · C major');
+  await page.getByRole('button', { name: 'Done' }).click();
+  await page.getByRole('button', { name: 'Guitar' }).click();
+  await page.getByTestId('add-layer').click();
+  await page.locator('[data-layer-type="strum"]').click();
+  await page.getByTestId('record').click();
+  await page.locator('.key[data-midi="57"]').dispatchEvent('pointerdown'); // A
+  await expect(page.locator('.block.chord.keyed')).toHaveAttribute('style', /--tone: var\(--deg-5\)/);
+  await expect(page.getByTestId('make-minor')).toHaveAttribute('style', /--tone: var\(--deg-5\)/);
+});
+
+test('Undo on Song Home: a whole tempo adjustment is one step, and says what it undid', async ({ page }) => {
+  await expect(page.getByTestId('undo')).toBeDisabled();
+  await page.getByRole('button', { name: 'BPM' }).click();
+  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Faster' }).click();
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByRole('button', { name: 'BPM' })).toContainText('103');
+
+  await page.getByTestId('undo').click();
+  await expect(page.getByRole('button', { name: 'BPM' })).toContainText('100');
+  await expect(page.locator('.toast')).toHaveText('Undo: Tempo 100 → 103');
+  await expect(page.getByTestId('undo')).toBeDisabled();
+  await page.getByTestId('redo').click();
+  await expect(page.getByRole('button', { name: 'BPM' })).toContainText('103');
+  await expect(page.locator('.toast')).toHaveText('Redo: Tempo 100 → 103');
+});

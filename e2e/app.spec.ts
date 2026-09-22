@@ -242,11 +242,16 @@ test('Record OFF: keys only preview — no events, no history, no key inference'
   await page.getByRole('button', { name: 'Back to song' }).click();
   await expect(page.getByRole('button', { name: 'Key' })).toHaveText(/Auto$/);
 
-  // The only history entry is the layer creation itself: one undo removes the layer.
+  // The only history entry is the layer creation itself: one undo removes the
+  // layer and returns to the Guitar page, where Redo brings it back.
   await openGuitar(page);
   await page.getByTestId('open-layer').click();
   await page.getByTestId('undo').click();
-  await expect(page.locator('.empty-state')).toContainText('no longer exists');
+  await expect(page.locator('[data-screen="guitar"]')).toBeVisible();
+  await expect(page.locator('.toast')).toHaveText('Undo: Add layer Single Notes 1');
+  await expect(page.locator('.layer-card')).toHaveCount(0);
+  await page.getByTestId('redo').click();
+  await expect(page.locator('.layer-card')).toHaveCount(1);
 });
 
 test('Record resets to OFF when reopening a layer', async ({ page }) => {

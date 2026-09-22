@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { setMetronomeOn, useMetronome } from '../audio/metronome';
 import { transport } from '../audio/transport';
 import { buildKeyWheel } from '../model/keyWheel';
@@ -20,6 +20,8 @@ export function TopBar() {
   const commit = useStore((s) => s.commit);
   const metronomeOn = useMetronome((s) => s.on);
   const [open, setOpen] = useState<Open>(null);
+  // Every tempo change during one visit to the Tempo sheet is one Undo step.
+  const tempoVisit = useRef(0);
 
   const wheel = useMemo(() => buildKeyWheel(song), [song]);
   // Locking with nothing inferred yet pins whatever sits at 12 o'clock.
@@ -31,13 +33,20 @@ export function TopBar() {
   const setBpm = (bpm: number) => {
     const clamped = Math.max(MIN_BPM, Math.min(MAX_BPM, Math.round(bpm)));
     transport.setBpm(clamped);
-    commit((s) => ({ ...s, bpm: clamped }));
+    commit((s) => ({ ...s, bpm: clamped }), `bpm:${tempoVisit.current}`);
   };
 
   return (
     <>
       <div className="topbar">
-        <button className="chip" onClick={() => setOpen('bpm')} aria-label={metronomeOn ? 'BPM, metronome on' : 'BPM'}>
+        <button
+          className="chip"
+          onClick={() => {
+            tempoVisit.current += 1;
+            setOpen('bpm');
+          }}
+          aria-label={metronomeOn ? 'BPM, metronome on' : 'BPM'}
+        >
           BPM <b>{song.bpm}</b>
           {metronomeOn && <span className="metro-dot" data-testid="metronome-indicator" />}
         </button>

@@ -66,7 +66,8 @@ test('Record OFF: humming lights the matching key red and commits nothing', asyn
   await expect(page.locator('.toast')).toHaveCount(0);
   // Only the layer creation is in history: one undo removes the layer.
   await page.getByTestId('undo').click();
-  await expect(page.locator('.empty-state')).toContainText('no longer exists');
+  await expect(page.locator('[data-screen="guitar"]')).toBeVisible();
+  await expect(page.locator('.layer-card')).toHaveCount(0);
 });
 
 test('Record OFF: a live red key stays red even where guidance would dim it', async ({ page }) => {

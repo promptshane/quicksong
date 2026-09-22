@@ -195,10 +195,10 @@ test('projects keep independent songs and undo survives autosave', async ({ page
   await page.getByRole('button', { name: 'Guitar' }).click();
   await page.getByTestId('add-layer').click();
   await page.locator('[data-layer-type="strum"]').click();
-  await page.getByTestId('undo').click(); // removes B's layer only
-  await expect(page.locator('.empty-state')).toContainText('no longer exists');
-  await page.getByRole('button', { name: 'Back to Guitar' }).click();
+  await page.getByTestId('undo').click(); // removes B's layer only, back on the Guitar page
+  await expect(page.locator('[data-screen="guitar"]')).toBeVisible();
   await expect(page.locator('.layer-card')).toHaveCount(0);
+  await expect(page.getByTestId('undo')).toBeDisabled();
   await page.getByRole('button', { name: 'Back to song' }).click();
   await page.getByRole('button', { name: 'Back to projects' }).click();
 

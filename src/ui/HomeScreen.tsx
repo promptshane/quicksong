@@ -6,6 +6,7 @@ import { Overview } from './Overview';
 import { PlayButton } from './PlayButton';
 import { toast } from './toastStore';
 import { TopBar } from './TopBar';
+import { UndoRedo } from './UndoRedo';
 
 const INSTRUMENTS = [
   { id: 'drums', label: 'Drums', icon: '🥁', enabled: false },
@@ -33,7 +34,9 @@ export function HomeScreen() {
         <div className="header-title" data-testid="project-title">
           {project?.name ?? 'Song'}
         </div>
-        <div className="header-side right" />
+        <div className="header-side right">
+          <UndoRedo />
+        </div>
       </div>
       <TopBar />
       <KeyLegend songKey={songKey} />

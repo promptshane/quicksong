@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { transport, useTransport } from '../audio/transport';
 import { chordName, keyName, midiToName, pitchClassOf } from '../model/music';
 import { pianoAddedPitchClasses, pianoChordName, pianoChordNotes, pianoChordTones, pianoPalette, type PianoPalette } from '../model/piano';
@@ -16,10 +16,12 @@ import {
   setEventVelocity,
   togglePianoChordNote,
 } from '../state/actions';
-import { selectCanRedo, selectCanUndo, useStore } from '../state/store';
+import { useStore } from '../state/store';
+import { toneColor, toneStyle } from './degreeColor';
 import { NoteWheel } from './NoteWheel';
 import { Sheet } from './Sheet';
 import { Timeline } from './Timeline';
+import { UndoRedo } from './UndoRedo';
 
 interface ChordChoice {
   root: PitchClass;
@@ -44,6 +46,7 @@ function ChordPalette({
         <button
           key={choiceId(c)}
           className={`palette-chord ${activeId === choiceId(c) ? 'on' : ''}`}
+          style={toneStyle(toneColor(c.root, palette.key))}
           onClick={() => onTap(c)}
           data-chord={chordName(c.root, c.quality)}
           aria-pressed={activeId === choiceId(c)}
@@ -174,7 +177,12 @@ function PianoChordPanel({
   return (
     <div className="panel-section" data-testid="piano-chord-panel">
       <div className="piano-chord-head">
-        <button className="piano-chord-name" onClick={() => auditionEvent(event, bpm)} aria-label="Hear chord">
+        <button
+          className="piano-chord-name"
+          style={toneStyle(toneColor(event.root, palette.key))}
+          onClick={() => auditionEvent(event, bpm)}
+          aria-label="Hear chord"
+        >
           <b data-testid="piano-chord-name">{pianoChordName(event)}</b>
           <small>▶ hear</small>
         </button>
@@ -250,34 +258,25 @@ export function PianoLayerEditor({ layerId }: { layerId: string }) {
   const selectedId = useStore((s) => s.selectedEventId);
   const cursor = useStore((s) => s.cursorBeat);
   const setView = useStore((s) => s.setView);
-  const undo = useStore((s) => s.undo);
-  const redo = useStore((s) => s.redo);
-  const canUndo = useStore(selectCanUndo);
-  const canRedo = useStore(selectCanRedo);
   const playing = useTransport((s) => s.playing);
   const [showWheel, setShowWheel] = useState(false);
 
   const palette = useMemo(() => pianoPalette(song), [song]);
 
-  if (!layer) {
-    return (
-      <div className="screen">
-        <div className="empty-state">
-          This layer no longer exists.
-          <br />
-          <button className="btn" onClick={() => setView({ name: 'piano' })}>
-            Back to Piano
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // Undo of adding this layer (or Redo of deleting it) removes it: go back to
+  // the Piano page, where Redo/Undo can bring it back.
+  useEffect(() => {
+    if (!layer) setView({ name: 'piano' });
+  }, [layer, setView]);
+
+  if (!layer) return null;
 
   const selected = layer.events.find((e) => e.id === selectedId) ?? null;
 
   const togglePlay = () => {
     if (transport.isPlaying) transport.stop(cursor);
-    else void transport.play(song, cursor);
+    // Play from the cursor to the end, then loop the whole song.
+    else void transport.play(song, cursor, { loop: true, loopFrom: 0 });
   };
 
   return (
@@ -290,16 +289,11 @@ export function PianoLayerEditor({ layerId }: { layerId: string }) {
         </div>
         <div className="header-title">{layer.name}</div>
         <div className="header-side right">
-          <button className="btn icon ghost" onClick={undo} disabled={!canUndo} aria-label="Undo" data-testid="undo">
-            ↶
-          </button>
-          <button className="btn icon ghost" onClick={redo} disabled={!canRedo} aria-label="Redo" data-testid="redo">
-            ↷
-          </button>
+          <UndoRedo />
         </div>
       </div>
 
-      <Timeline song={song} layer={layer} />
+      <Timeline song={song} layer={layer} colorKey={palette.key} />
 
       <div className="panel">
         {selected ? (
@@ -324,7 +318,11 @@ export function PianoLayerEditor({ layerId }: { layerId: string }) {
 
       {showWheel && selected && (
         <Sheet title="Special chord" onClose={() => setShowWheel(false)}>
-          <NoteWheel event={selected} scale={palette.scale} onToggle={(pc) => togglePianoChordNote(layerId, selected.id, pc)} />
+          <NoteWheel
+            event={selected}
+            scale={palette.scale}
+            tone={toneColor(selected.root, palette.key)}
+            onToggle={(pc) => togglePianoChordNote(layerId, selected.id, pc)} />
           <div className="panel-hint compact">
             Tap a note to add it and hear the chord. Bright notes belong to {keyName(palette.key)}; the others still work.
           </div>

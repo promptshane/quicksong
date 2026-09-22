@@ -6,12 +6,13 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { useTransport } from '../audio/transport';
-import { chordName, midiToName } from '../model/music';
-import { pianoChordName } from '../model/piano';
-import { eighthBeats, snapToEighth, songBars, songBeats } from '../model/time';
-import type { AnyEvent, AnyLayer, PianoEvent, Song } from '../model/types';
+import { eventLabel } from '../model/labels';
+import { eventRootPitchClass } from '../model/song';
+import { eighthBeats, evenPhraseBars, snapToEighth, songBars, songBeats } from '../model/time';
+import type { AnyEvent, AnyLayer, MusicalKey, PianoEvent, Song } from '../model/types';
 import { addTimelineSlot, deleteEvent, moveEvent } from '../state/actions';
 import { useStore } from '../state/store';
+import { toneColor, toneStyle } from './degreeColor';
 import { HitShape } from './HitShape';
 import { Sheet } from './Sheet';
 
@@ -23,12 +24,8 @@ const LONG_PRESS_MS = 550;
 interface TimelineProps {
   song: Song;
   layer: AnyLayer;
-}
-
-function eventLabel(ev: AnyEvent): string {
-  if (ev.kind === 'note') return midiToName(ev.midi);
-  if (ev.kind === 'piano') return pianoChordName(ev);
-  return chordName(ev.root, ev.quality);
+  /** Colour blocks by their place in this key (see degreeColor). */
+  colorKey?: MusicalKey | null;
 }
 
 /** A piano hit: its name, then the strike and sustain drawn below it. */
@@ -48,7 +45,7 @@ function PianoStrike({ event }: { event: PianoEvent }) {
  * scrolls the timeline (CSS `touch-action: pan-x`), so moving something
  * always takes a deliberate tap first.
  */
-export function Timeline({ song, layer }: TimelineProps) {
+export function Timeline({ song, layer, colorKey = null }: TimelineProps) {
   const selectedId = useStore((s) => s.selectedEventId);
   const cursor = useStore((s) => s.cursorBeat);
   const select = useStore((s) => s.select);
@@ -62,6 +59,8 @@ export function Timeline({ song, layer }: TimelineProps) {
   const bars = songBars(song);
   const totalBeats = songBeats(song);
   const contentWidth = bars * PX_PER_BAR;
+  const evenBars = evenPhraseBars(bars);
+  const loopIsEven = evenBars === bars;
   const width = contentWidth + ADD_SLOT_WIDTH;
   const step = eighthBeats(ts);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -195,28 +194,36 @@ export function Timeline({ song, layer }: TimelineProps) {
                 {i + 1}
               </span>
             ))}
+            {/* Playback loops these bars; an even phrase (1, 2, 4, 8…) loops most naturally. */}
+            <span className={`loop-badge ${loopIsEven ? 'even' : ''}`} data-testid="loop-badge">
+              ⟲ {bars} bar{bars === 1 ? '' : 's'}
+              {!loopIsEven && ` · +${evenBars - bars} for an even ${evenBars}`}
+            </span>
           </div>
           {gridLines}
           <div className="lane" style={{ width: contentWidth, right: 'auto' }}>
-            {(layer.events as AnyEvent[]).map((ev) => (
-              <div
-                key={ev.id}
-                className={`block ${ev.kind} ${ev.id === selectedId ? 'selected' : ''} ${
-                  ev.kind === 'chord' && ev.quality === 'note' ? 'seed' : ''
-                }`}
-                style={{ left: ev.start * pxPerBeat, width: Math.max(18, ev.duration * pxPerBeat - 2) }}
-                onPointerDown={(e) => onBlockPointerDown(e, ev)}
-                onPointerMove={onBlockPointerMove}
-                onPointerUp={onBlockPointerUp}
-                onPointerCancel={onBlockPointerCancel}
-                data-event-id={ev.id}
-                role="button"
-                aria-label={eventLabel(ev)}
-              >
-                {ev.kind === 'piano' ? <PianoStrike event={ev} /> : eventLabel(ev)}
-                {ev.kind === 'chord' && ev.quality === 'note' && <small>tap Major/Minor</small>}
-              </div>
-            ))}
+            {(layer.events as AnyEvent[]).map((ev) => {
+              const tone = toneColor(eventRootPitchClass(ev), colorKey);
+              return (
+                <div
+                  key={ev.id}
+                  className={`block ${ev.kind} ${ev.id === selectedId ? 'selected' : ''} ${
+                    ev.kind === 'chord' && ev.quality === 'note' ? 'seed' : ''
+                  } ${tone ? 'keyed' : ''}`}
+                  style={toneStyle(tone, { left: ev.start * pxPerBeat, width: Math.max(18, ev.duration * pxPerBeat - 2) })}
+                  onPointerDown={(e) => onBlockPointerDown(e, ev)}
+                  onPointerMove={onBlockPointerMove}
+                  onPointerUp={onBlockPointerUp}
+                  onPointerCancel={onBlockPointerCancel}
+                  data-event-id={ev.id}
+                  role="button"
+                  aria-label={eventLabel(ev)}
+                >
+                  {ev.kind === 'piano' ? <PianoStrike event={ev} /> : eventLabel(ev)}
+                  {ev.kind === 'chord' && ev.quality === 'note' && <small>tap Major/Minor</small>}
+                </div>
+              );
+            })}
           </div>
           <div className="cursor" style={{ left: cursor * pxPerBeat }} />
           {playing && <div className="playhead" style={{ left: playhead * pxPerBeat }} />}

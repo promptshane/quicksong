@@ -6,6 +6,7 @@ import { useStore, type View } from '../state/store';
 import { Overview } from './Overview';
 import { PlayButton } from './PlayButton';
 import { Sheet } from './Sheet';
+import { UndoRedo } from './UndoRedo';
 
 const TYPE_OPTIONS: { type: GuitarLayerType; hint: string }[] = [
   { type: 'strum', hint: 'Full chords with a strumming pattern' },
@@ -138,6 +139,7 @@ export function InstrumentFocus({ instrument }: { instrument: InstrumentId }) {
         </div>
         <div className="header-title">{config.title}</div>
         <div className="header-side right">
+          <UndoRedo />
           <button
             className="btn primary small"
             onClick={() => (config.askType ? setPicking(true) : addLayer())}

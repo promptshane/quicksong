@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { beatsToSeconds, isDownbeat, songBeats } from '../model/time';
 import type { Song } from '../model/types';
 import { getAudioEngine } from './engine';
+import { passBeat, songBeatAt, type LoopSpan } from './loop';
 import { renderSong, type ScheduledNote } from './render';
 import { scheduleClick } from './synth';
 
@@ -25,18 +26,29 @@ const TICK_MS = 25;
 class Transport {
   private timer: ReturnType<typeof setInterval> | null = null;
   private raf = 0;
+  /** Id of the song being played, so edits to it can be picked up live. */
+  private songId: string | null = null;
+  /** Rendered notes that can sound in this session, sorted by beat. */
   private notes: ScheduledNote[] = [];
-  private playbackNotes: ScheduledNote[] = [];
   private nextIndex = 0;
-  private loopCycle = 0;
+  /** Which pass of the loop `nextIndex` is on (0 = the first pass). */
+  private pass = 0;
+  private wantLoop = false;
   private loop = false;
-  private loopLength = 0;
+  private loopFrom = 0;
+  private endBeat = 0;
+  /** True when the end is the song's own end, so it follows added/removed slots. */
+  private followSongEnd = false;
+  /** Where the current first pass began (moves when live edits re-anchor). */
   private startBeat = 0;
+  /** Where playback was started from; Stop returns here at the end of a one-shot play. */
+  private returnBeat = 0;
   /** Unwrapped musical beat corresponding to startTime; reset on live tempo changes. */
   private anchorBeat = 0;
   private startTime = 0;
+  /** AudioContext time up to which notes and clicks have been scheduled. */
+  private scheduledUntil = 0;
   private bpm = 100;
-  private endBeat = 0;
   private onEnd: (() => void) | null = null;
   private beatsPerBar = 4;
   /** Click requested by this play session (a hum take). */
@@ -50,6 +62,10 @@ class Transport {
     return this.timer !== null;
   }
 
+  private get span(): LoopSpan {
+    return { loop: this.loop, loopFrom: this.loopFrom, endBeat: this.endBeat };
+  }
+
   private absoluteBeatAt(audioTime: number): number {
     const elapsedBeats = Math.max(0, ((audioTime - this.startTime) * this.bpm) / 60);
     return this.anchorBeat + elapsedBeats;
@@ -57,12 +73,7 @@ class Transport {
 
   currentBeat(): number {
     if (!this.isPlaying) return useTransport.getState().playheadBeat;
-    const absoluteBeat = this.absoluteBeatAt(getAudioEngine().now());
-    if (this.loop && this.loopLength > 0) {
-      const wrapped = ((absoluteBeat - this.startBeat) % this.loopLength + this.loopLength) % this.loopLength;
-      return this.startBeat + wrapped;
-    }
-    return absoluteBeat;
+    return songBeatAt(this.absoluteBeatAt(getAudioEngine().now()), this.span);
   }
 
   /**
@@ -90,37 +101,44 @@ class Transport {
   }
 
   /**
-   * Start playing `song` from `fromBeat`. `opts.metronome` adds a click on
-   * every beat (used while recording a hum). `opts.endBeat` overrides where
-   * playback stops (default: end of song). `opts.loop` keeps the scheduler
-   * running continuously and schedules the next pass ahead of the boundary.
+   * Start playing `song` from `fromBeat`.
+   * - `opts.endBeat`: where a pass ends (default: the song's end, which then
+   *   follows slots added or removed while playing).
+   * - `opts.loop`: keep going; each later pass replays `opts.loopFrom`
+   *   (default `fromBeat`) to the end, scheduled ahead of the boundary so
+   *   there is no gap.
+   * - `opts.metronome`: click on every beat (a hum take).
    */
   async play(
     song: Song,
     fromBeat: number,
-    opts: { metronome?: boolean; endBeat?: number; onEnd?: () => void; loop?: boolean } = {},
+    opts: { metronome?: boolean; endBeat?: number; onEnd?: () => void; loop?: boolean; loopFrom?: number } = {},
   ): Promise<void> {
     const engine = getAudioEngine();
     const ctx = await engine.unlock();
     if (!ctx) return;
     this.stop();
 
-    this.notes = renderSong(song);
+    this.songId = song.id;
     this.bpm = song.bpm;
-    this.startBeat = fromBeat;
-    this.anchorBeat = fromBeat;
-    this.endBeat = opts.endBeat ?? songBeats(song);
-    this.loop = opts.loop === true && this.endBeat > this.startBeat;
-    this.loopLength = this.endBeat - this.startBeat;
-    this.onEnd = opts.onEnd ?? null;
     this.beatsPerBar = song.timeSignature.beatsPerBar;
+    this.followSongEnd = opts.endBeat === undefined;
+    this.endBeat = opts.endBeat ?? songBeats(song);
+    this.loopFrom = Math.min(opts.loopFrom ?? fromBeat, fromBeat);
+    this.wantLoop = opts.loop === true;
+    this.loop = this.wantLoop && this.endBeat - this.loopFrom > 1e-6;
+    this.startBeat = fromBeat;
+    this.returnBeat = fromBeat;
+    this.anchorBeat = fromBeat;
+    this.startTime = ctx.currentTime + 0.05;
+    this.scheduledUntil = this.startTime;
+    this.onEnd = opts.onEnd ?? null;
     this.takeClick = opts.metronome === true;
     this.nextClickBeat = Math.ceil(fromBeat - 1e-6);
 
-    this.playbackNotes = this.notes.filter((n) => n.beat >= this.startBeat - 1e-6 && n.beat < this.endBeat - 1e-6);
-    this.nextIndex = 0;
-    this.loopCycle = 0;
-    this.startTime = ctx.currentTime + 0.05;
+    this.loadNotes(song);
+    this.pass = 0;
+    this.nextIndex = this.firstIndex((n) => n.beat >= fromBeat - 1e-6);
 
     useTransport.setState({ playing: true, playheadBeat: fromBeat });
     this.timer = setInterval(() => this.tick(), TICK_MS);
@@ -133,6 +151,63 @@ class Transport {
     this.raf = requestAnimationFrame(frame);
   }
 
+  /**
+   * The song changed while playing (an edit, Undo/Redo, a new slot): hear it
+   * from the next unscheduled note on, without stopping. Notes already
+   * scheduled in the look-ahead window keep playing; everything after comes
+   * from the new song. Ignored for any other song (e.g. a project preview).
+   */
+  refresh(song: Song): void {
+    if (!this.isPlaying || song.id !== this.songId) return;
+    const ctx = getAudioEngine().context;
+    if (!ctx) return;
+    if (song.bpm !== this.bpm) this.setBpm(song.bpm);
+
+    const now = ctx.currentTime;
+    const until = Math.max(this.scheduledUntil, now);
+    const oldSpan = this.span;
+    let songNow = songBeatAt(this.absoluteBeatAt(now), oldSpan);
+    let songUntil = songBeatAt(this.absoluteBeatAt(until), oldSpan);
+    // The look-ahead already reached into the next pass.
+    let wrapped = this.loop && songUntil < songNow - 1e-9;
+
+    this.beatsPerBar = song.timeSignature.beatsPerBar;
+    if (this.followSongEnd) this.endBeat = songBeats(song);
+    this.loop = this.wantLoop && this.endBeat - this.loopFrom > 1e-6;
+    if (songNow >= this.endBeat - 1e-6 || (wrapped && songUntil >= this.endBeat - 1e-6)) {
+      // The song got shorter than where we are.
+      if (!this.loop) {
+        this.stop(this.returnBeat);
+        return;
+      }
+      songNow = this.loopFrom;
+      songUntil = this.loopFrom - 1e-6;
+      wrapped = false;
+    }
+
+    // Re-anchor: "now" is `songNow` on a fresh first pass.
+    this.startBeat = songNow;
+    this.anchorBeat = songNow;
+    this.startTime = now;
+    this.loadNotes(song);
+    this.pass = wrapped ? 1 : 0;
+    const after = (n: ScheduledNote) => n.beat > songUntil + 1e-9 && n.beat >= (wrapped ? this.loopFrom : songNow) - 1e-6;
+    this.nextIndex = this.firstIndex(after);
+    const untilUnwrapped = wrapped ? passBeat(songUntil, 1, this.span) : Math.max(songUntil, songNow);
+    this.nextClickBeat = Math.floor(untilUnwrapped + 1e-9) + 1;
+    this.scheduledUntil = until;
+  }
+
+  private loadNotes(song: Song): void {
+    const from = this.loop ? Math.min(this.loopFrom, this.startBeat) : this.startBeat;
+    this.notes = renderSong(song).filter((n) => n.beat >= from - 1e-6 && n.beat < this.endBeat - 1e-6);
+  }
+
+  private firstIndex(test: (n: ScheduledNote) => boolean): number {
+    const i = this.notes.findIndex(test);
+    return i < 0 ? this.notes.length : i;
+  }
+
   stop(resetTo?: number): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
@@ -143,8 +218,9 @@ class Transport {
       // engine not created yet
     }
     this.loop = false;
-    this.loopLength = 0;
-    this.playbackNotes = [];
+    this.wantLoop = false;
+    this.notes = [];
+    this.songId = null;
     useTransport.setState({ playing: false, playheadBeat: resetTo ?? useTransport.getState().playheadBeat });
   }
 
@@ -171,7 +247,7 @@ class Transport {
     this.editClick = on;
   }
 
-  /** AudioContext time for a song beat, given the current play session. */
+  /** AudioContext time for an unwrapped beat of the current play session. */
   timeForBeat(beat: number): number {
     return this.startTime + beatsToSeconds(beat - this.anchorBeat, this.bpm);
   }
@@ -182,55 +258,43 @@ class Transport {
     const ctx = engine.context;
     if (!instrument || !ctx) return;
     const horizon = ctx.currentTime + LOOKAHEAD_SEC;
+    const span = this.span;
 
-    if (this.loop) {
-      // Schedule notes using an ever-increasing absolute beat. When one pass
-      // is exhausted, immediately advance to the next cycle. Because the
-      // look-ahead horizon crosses the loop boundary, beat 0 of the next pass
-      // is already scheduled before the current pass ends — no stop/restart gap.
-      while (this.playbackNotes.length > 0) {
-        const n = this.playbackNotes[this.nextIndex];
-        const absoluteBeat = n.beat + this.loopCycle * this.loopLength;
-        const when = this.timeForBeat(absoluteBeat) + n.offsetSec;
-        if (when > horizon) break;
-        if (n.gain > 0) {
-          instrument.noteOn(n.midi, n.velocity, when, beatsToSeconds(n.durationBeats, this.bpm), n.gain);
-        }
-        this.nextIndex++;
-        if (this.nextIndex >= this.playbackNotes.length) {
-          this.nextIndex = 0;
-          this.loopCycle++;
-        }
+    // Notes are timed on the unwrapped beat counter. When a pass runs out,
+    // move straight on to the next one: the look-ahead crosses the loop
+    // boundary, so the next pass is scheduled before this one ends — no gap.
+    for (;;) {
+      if (this.nextIndex >= this.notes.length) {
+        if (!this.loop) break;
+        const first = this.firstIndex((n) => n.beat >= this.loopFrom - 1e-6);
+        if (first >= this.notes.length) break; // nothing in the loop to play
+        this.pass++;
+        this.nextIndex = first;
       }
-    } else {
-      while (this.nextIndex < this.playbackNotes.length) {
-        const n = this.playbackNotes[this.nextIndex];
-        const when = this.timeForBeat(n.beat) + n.offsetSec;
-        if (when > horizon) break;
-        if (n.gain > 0) {
-          instrument.noteOn(n.midi, n.velocity, when, beatsToSeconds(n.durationBeats, this.bpm), n.gain);
-        }
-        this.nextIndex++;
+      const n = this.notes[this.nextIndex];
+      const when = this.timeForBeat(passBeat(n.beat, this.pass, span)) + n.offsetSec;
+      if (when > horizon) break;
+      if (n.gain > 0) {
+        instrument.noteOn(n.midi, n.velocity, when, beatsToSeconds(n.durationBeats, this.bpm), n.gain);
       }
+      this.nextIndex++;
     }
 
     if (this.clicking) {
-      // Clicks count unwrapped beats, so a looping song keeps clicking on
-      // every pass; the accent follows the bar position inside the song.
+      // Clicks count unwrapped beats too, so a loop keeps clicking on every
+      // pass; the accent follows the bar position inside the song.
       while (this.loop || this.nextClickBeat < this.endBeat) {
         const when = this.timeForBeat(this.nextClickBeat);
         if (when > horizon) break;
-        const songBeat = this.loop
-          ? this.startBeat + ((((this.nextClickBeat - this.startBeat) % this.loopLength) + this.loopLength) % this.loopLength)
-          : this.nextClickBeat;
-        scheduleClick(ctx, ctx.destination, when, isDownbeat(songBeat, this.beatsPerBar));
+        scheduleClick(ctx, ctx.destination, when, isDownbeat(songBeatAt(this.nextClickBeat, span), this.beatsPerBar));
         this.nextClickBeat++;
       }
     }
+    this.scheduledUntil = Math.max(this.scheduledUntil, horizon);
 
-    if (!this.loop && this.currentBeat() >= this.endBeat) {
+    if (!this.loop && this.absoluteBeatAt(ctx.currentTime) >= this.endBeat) {
       const onEnd = this.onEnd;
-      this.stop(this.startBeat);
+      this.stop(this.returnBeat);
       onEnd?.();
     }
   }

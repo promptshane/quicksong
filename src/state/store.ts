@@ -91,6 +91,17 @@ interface StoreState {
   deleteProject: (id: string) => Promise<void>;
 }
 
+/** Structural equality for plain JSON song data. */
+export function sameData(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a).filter((k) => (a as Record<string, unknown>)[k] !== undefined);
+  const kb = Object.keys(b).filter((k) => (b as Record<string, unknown>)[k] !== undefined);
+  if (ka.length !== kb.length) return false;
+  return ka.every((k) => sameData((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+}
+
 /** Keep the cursor inside the (content-derived) song length. */
 function clampCursor(cursorBeat: number, song: Song): number {
   return Math.max(0, Math.min(cursorBeat, songBeats(song) - eighthBeats(song.timeSignature)));
@@ -134,7 +145,9 @@ export const useStore = create<StoreState>((set, get) => ({
     const { song, past, cursorBeat, lastCommitKey } = get();
     // Every edit may rule out a preferred Auto key; drop it in the same step.
     const next = reconcileKeyPreference(fn(song));
-    if (next === song) return;
+    // An edit that changes nothing (a move to where it already is, + at the
+    // BPM limit) must not leave an Undo step that appears to do nothing.
+    if (next === song || sameData(next, song)) return;
     const merge = coalesceKey !== undefined && coalesceKey === lastCommitKey && past.length > 0;
     set({
       song: next,
