@@ -14,7 +14,9 @@ All instrument layers ultimately follow these shared settings.
 
 ### Editing Metronome
 
-Tapping **BPM** opens the Tempo sheet, which includes a **Metronome** on/off toggle. While on, a click plays at the song's BPM (accenting the first beat of each bar) the whole time the user is editing the project — across Song Home, instrument and layer screens. While the song is playing, the click follows the playback's own beats so it always lines up with the music. A dot on the BPM chip shows the metronome is on. It is silent on the Projects screen and is a session setting, not saved with the song.
+Tapping **BPM** opens the Tempo sheet, which includes a **Metronome** on/off toggle. While on, the metronome clicks **only while the song is playing** — on Song Home, instrument and layer screens alike — following the playback's own beats (accenting the first beat of each bar) so it always lines up with the music. Paused means silent. A dot on the BPM chip shows the metronome is on. It never clicks on the Projects screen and is a session setting, not saved with the song.
+
+Sending the app to the background (e.g. swiping to the iPhone Home Screen) stops playback, so nothing — music or metronome — keeps sounding.
 
 The key may be selected manually, but QuickSong should also be able to infer likely keys progressively from the notes/chords the user creates. A single hummed note is not enough to uniquely determine a key, so confidence should increase as more musical information is added.
 
@@ -262,6 +264,9 @@ Each instrument row represents its place in the song timeline.
 - If it has one layer, that layer fills the available row area.
 - If it has multiple layers, the row visually divides to show them.
 - Clips/events should appear at their actual positions across the song timeline.
+- Each event is drawn as a hit: a vertical strike whose height is its velocity, with a line dropping off across its duration.
+- Events are colour-coded by their place in the song's key (the manual key, or Auto's assumed key): a chord by its root's scale degree, a single note by its own. Rainbow order — **I red, ii orange, iii yellow, IV green, V blue, vi violet, vii pink** (minor keys likewise from i) — so the same chord is the same colour on guitar and piano and progressions can be read at a glance. Anything outside the key is neutral gray.
+- A slim legend under the top bar shows the key's chords in their colours (e.g. C Dm Em F G Am Bdim).
 - Empty timeline length should not accumulate automatically.
 - The app should **not** append a trailing empty bar/slot just because content exists.
 - Timeline bar-slots are created explicitly by the user with a compact **+ Slot** control at the end of the timeline.
@@ -295,7 +300,7 @@ A new guitar layer asks the user to choose:
 - **Type 1B — Picked Chord**
 - **Type 2 — Single Notes**
 
-Each layer card in the Guitar and Piano overviews draws its events as hits: a vertical strike whose height is the event's velocity, with a line dropping off across its duration. Song Home keeps compact solid clips.
+Each layer card in the Guitar and Piano overviews draws its events as hits in the same key colours as Song Home: a vertical strike whose height is the event's velocity, with a line dropping off across its duration.
 
 Existing guitar layers can be duplicated from the Guitar overview with a long-press. The duplicate should preserve the layer's musical content/settings, receive independent IDs, and appear immediately after the source so both layers can play simultaneously.
 

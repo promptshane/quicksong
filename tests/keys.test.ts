@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { ALL_KEYS, candidateKeys, dimmedPitchClasses, impossiblePitchClasses, keyPitchClasses } from '../src/model/keys';
-import { addEvent, buildChord, createLayer, createNoteEvent, createSeedChord, createSong, usedPitchClasses } from '../src/model/song';
+import { ALL_KEYS, candidateKeys, dimmedPitchClasses, impossiblePitchClasses, keyPitchClasses, scaleDegree } from '../src/model/keys';
+import { createPianoChord } from '../src/model/piano';
+import {
+  addEvent,
+  assumedKey,
+  buildChord,
+  createLayer,
+  createNoteEvent,
+  createSeedChord,
+  createSong,
+  eventRootPitchClass,
+  setManualKey,
+  usedPitchClasses,
+} from '../src/model/song';
 
 const C = 0, Cs = 1, D = 2, Ds = 3, E = 4, F = 5, Fs = 6, G = 7, Gs = 8, A = 9, As = 10, B = 11;
 
@@ -83,5 +95,25 @@ describe('usedPitchClasses', () => {
     // A seed chord contributes just its one tone.
     song = addEvent(song, strum.id, createSeedChord(66, 4, 4)); // F#
     expect(usedPitchClasses(song)).toEqual(new Set([D, A, C, E, Fs]));
+  });
+});
+
+describe('scaleDegree and event colouring inputs', () => {
+  it('numbers the key scale from the tonic and rejects outside notes', () => {
+    const cMajor = { tonic: 0, quality: 'major' } as const;
+    expect([0, 2, 4, 5, 7, 9, 11].map((pc) => scaleDegree(pc, cMajor))).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(scaleDegree(1, cMajor)).toBeNull();
+    expect(scaleDegree(-12, cMajor)).toBe(0);
+    const aMinor = { tonic: 9, quality: 'minor' } as const;
+    expect(scaleDegree(9, aMinor)).toBe(0);
+    expect(scaleDegree(0, aMinor)).toBe(2); // C is III in A minor
+  });
+
+  it('an event is coloured by its note or its chord root, in the song key', () => {
+    expect(eventRootPitchClass(createNoteEvent(64, 0, 1))).toBe(4);
+    expect(eventRootPitchClass(buildChord(createSeedChord(57, 0, 4), 'minor'))).toBe(9);
+    expect(eventRootPitchClass(createPianoChord(7, 'major', 0, 4))).toBe(7);
+    expect(assumedKey(createSong())).toBeNull();
+    expect(assumedKey(setManualKey(createSong(), { tonic: 2, quality: 'major' }))).toEqual({ tonic: 2, quality: 'major' });
   });
 });

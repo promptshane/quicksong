@@ -46,8 +46,6 @@ export function App() {
 
   return (
     <>
-      {/* Solid strip behind the iOS status bar; see .status-bar-shim. */}
-      <div className="status-bar-shim" aria-hidden="true" />
       <div className="app" data-hydrated={hydrated ? 'true' : 'false'}>
         {screen}
         <ToastHost />

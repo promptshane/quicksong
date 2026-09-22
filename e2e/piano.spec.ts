@@ -196,8 +196,58 @@ test('layer pages draw each hit: strike height = velocity, dropoff = duration', 
   await expect(guitarHit).toHaveCount(1);
   await expect(guitarHit.locator('.hit-strike')).toHaveAttribute('style', /height: 80%/);
 
-  // Song Home keeps its compact solid clips.
+  // Song Home draws the same hits.
   await page.getByRole('button', { name: 'Back to song' }).click();
-  await expect(page.locator('.rows .clip')).toHaveCount(2);
-  await expect(page.locator('.rows .clip.hit')).toHaveCount(0);
+  await expect(page.locator('.rows .clip.hit')).toHaveCount(2);
+  await expect(page.locator('.rows .clip.hit.piano .hit-strike')).toHaveAttribute('style', /height: 40%/);
+});
+
+test('Song Home colours every hit by its chord or note degree in the key', async ({ page }) => {
+  // Lock C major so the colours are deterministic.
+  await page.getByRole('button', { name: 'Key' }).click();
+  await page.getByTestId('key-lock').click();
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByTestId('key-legend')).toHaveText('CDmEmFGAmBdim');
+
+  await openNewPianoLayer(page);
+  await addChord(page, 'C');
+  await page.getByTestId('next-piano-chord').click();
+  await addChord(page, 'Am');
+  await page.getByTestId('next-piano-chord').click();
+  await addChord(page, 'G');
+  await page.getByRole('button', { name: 'Back to piano' }).click();
+  await page.getByRole('button', { name: 'Back to song' }).click();
+
+  // A guitar note: E is iii, an out-of-key C# is neutral.
+  await page.getByRole('button', { name: 'Guitar' }).click();
+  await page.getByTestId('add-layer').click();
+  await page.locator('[data-layer-type="single"]').click();
+  await page.getByTestId('record').click();
+  await page.locator('.key[data-midi="52"]').dispatchEvent('pointerdown');
+  await page.locator('.key[data-midi="49"]').dispatchEvent('pointerdown');
+  await page.getByRole('button', { name: 'Back to guitar' }).click();
+  await page.getByRole('button', { name: 'Back to song' }).click();
+
+  const piano = page.locator('[data-instrument="piano"] .clip');
+  await expect(piano).toHaveCount(3);
+  await expect(piano.nth(0)).toHaveAttribute('data-degree', '0'); // I   red
+  await expect(piano.nth(1)).toHaveAttribute('data-degree', '5'); // vi  violet
+  await expect(piano.nth(2)).toHaveAttribute('data-degree', '4'); // V   blue
+  await expect(piano.nth(0)).toHaveCSS('color', 'rgb(248, 113, 113)');
+  const guitar = page.locator('[data-instrument="guitar"] .clip');
+  await expect(guitar.nth(0)).toHaveAttribute('data-degree', '2');
+  await expect(guitar.nth(1)).toHaveAttribute('data-degree', 'out');
+});
+
+test('backgrounding the app stops playback (and the metronome with it)', async ({ page }) => {
+  await page.getByRole('button', { name: 'BPM' }).click();
+  await page.getByTestId('metronome-toggle').click();
+  await page.getByRole('button', { name: 'Done' }).click();
+  await page.getByTestId('play').click();
+  await expect(page.getByTestId('play')).toHaveAttribute('aria-label', 'Pause');
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(page.getByTestId('play')).toHaveAttribute('aria-label', 'Play');
 });

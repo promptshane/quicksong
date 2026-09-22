@@ -1,4 +1,7 @@
+import { useMemo } from 'react';
+import { assumedKey } from '../model/song';
 import { selectActiveProject, useStore } from '../state/store';
+import { KeyLegend } from './KeyLegend';
 import { Overview } from './Overview';
 import { PlayButton } from './PlayButton';
 import { toast } from './toastStore';
@@ -17,6 +20,7 @@ export function HomeScreen() {
   const setView = useStore((s) => s.setView);
   const project = useStore(selectActiveProject);
   const closeProject = useStore((s) => s.closeProject);
+  const songKey = useMemo(() => assumedKey(song), [song]);
 
   return (
     <div className="screen" data-screen="home">
@@ -32,6 +36,7 @@ export function HomeScreen() {
         <div className="header-side right" />
       </div>
       <TopBar />
+      <KeyLegend songKey={songKey} />
       <div className="screen-body">
         <div className="rows">
           {INSTRUMENTS.map((inst) => {
@@ -56,7 +61,7 @@ export function HomeScreen() {
                   {layers.length === 0 ? (
                     <div className="row-empty">{inst.enabled ? `Tap to add ${inst.label.toLowerCase()}` : inst.label}</div>
                   ) : (
-                    layers.map((layer) => <Overview key={layer.id} song={song} layer={layer} />)
+                    layers.map((layer) => <Overview key={layer.id} song={song} layer={layer} hits colorKey={songKey} />)
                   )}
                 </div>
               </button>

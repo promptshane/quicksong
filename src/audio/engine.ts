@@ -103,6 +103,12 @@ export class AudioEngine {
   stopAll(): void {
     this.instrument?.allNotesOff();
   }
+
+  /** Silence everything and pause the audio clock (app sent to the background). */
+  suspend(): void {
+    this.stopAll();
+    if (this.ctx?.state === 'running') void this.ctx.suspend().catch(() => undefined);
+  }
 }
 
 let engine: AudioEngine | null = null;
@@ -121,16 +127,24 @@ export function initAudioEngine(factory: InstrumentFactory): AudioEngine {
 
 /**
  * Install document-level listeners so the first tap anywhere unlocks audio,
- * and the context is resumed when the app returns to the foreground.
+ * the context is resumed when the app returns to the foreground, and nothing
+ * keeps sounding once the app is backgrounded (e.g. swiped to the Home Screen).
+ * `onHidden` lets the caller stop its own clocks (the transport) first.
  */
-export function installAudioUnlockListeners(engineToUnlock: AudioEngine): void {
+export function installAudioUnlockListeners(engineToUnlock: AudioEngine, onHidden: () => void = () => {}): void {
   const unlock = () => {
     void engineToUnlock.unlock();
   };
   for (const evt of ['touchend', 'pointerdown', 'keydown'] as const) {
     document.addEventListener(evt, unlock, { passive: true });
   }
+  const hide = () => {
+    onHidden();
+    engineToUnlock.suspend();
+  };
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') unlock();
+    else hide();
   });
+  window.addEventListener('pagehide', hide);
 }

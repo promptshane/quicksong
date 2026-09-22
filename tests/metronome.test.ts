@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import * as engine from '../src/audio/engine';
 engine.initAudioEngine(() => ({ noteOn() {}, allNotesOff() {} }));
 import { installMetronome, setMetronomeOn, useMetronome } from '../src/audio/metronome';
-import { transport, useTransport } from '../src/audio/transport';
+import { transport } from '../src/audio/transport';
 import { isDownbeat } from '../src/model/time';
 
 describe('isDownbeat', () => {
@@ -14,17 +14,14 @@ describe('isDownbeat', () => {
   });
 });
 
-describe('editing metronome wiring', () => {
-  it('clicks only while a project is open, and hands the click to the transport', () => {
+describe('editing metronome', () => {
+  it('only ever asks the transport to click (so it is silent while paused), and only in an open project', () => {
     const editClick = vi.spyOn(transport, 'setEditClick');
     let setActive: (active: boolean) => void = () => {};
-    installMetronome(
-      () => ({ bpm: 120, beatsPerBar: 4 }),
-      (listener) => {
-        setActive = listener;
-        listener(false);
-      },
-    );
+    installMetronome((listener) => {
+      setActive = listener;
+      listener(false);
+    });
 
     setMetronomeOn(true);
     expect(useMetronome.getState().on).toBe(true);
@@ -32,11 +29,8 @@ describe('editing metronome wiring', () => {
 
     setActive(true);
     expect(editClick).toHaveBeenLastCalledWith(true);
-
-    // Starting/stopping playback re-syncs without dropping the click.
-    useTransport.setState({ playing: true });
-    expect(editClick).toHaveBeenLastCalledWith(true);
-    useTransport.setState({ playing: false });
+    // Nothing is playing, so nothing is scheduled: the transport is the only clock.
+    expect(transport.isPlaying).toBe(false);
 
     setMetronomeOn(false);
     expect(editClick).toHaveBeenLastCalledWith(false);

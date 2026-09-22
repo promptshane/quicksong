@@ -1,6 +1,6 @@
 import { addToneToVoicing, defaultVoicing, relabelChord, singleNoteVoicing, soundingNotes } from './chords';
 import { newId } from './ids';
-import { candidateKeys, isPlausibleKey, keyTonality, relativeKey, sameKey, triadId, type Triad } from './keys';
+import { candidateKeys, isPlausibleKey, keyTonality, relativeKey, resolveAssumedKey, sameKey, triadId, type Triad } from './keys';
 import { pitchClassOf } from './music';
 import { DEFAULT_TIME_SIGNATURE, eighthsPerBar } from './time';
 import type {
@@ -16,6 +16,7 @@ import type {
   NoteEvent,
   PianoLayer,
   PickedLayer,
+  PitchClass,
   SingleNoteLayer,
   Song,
   StrumLayer,
@@ -372,6 +373,19 @@ export function usedChords(song: Song): Triad[] {
     }
   }
   return [...seen.values()];
+}
+
+/**
+ * The pitch class an event is "about": a note's own pitch, a chord's root.
+ * Used to colour events by their place in the key.
+ */
+export function eventRootPitchClass(event: AnyEvent): PitchClass {
+  return event.kind === 'note' ? pitchClassOf(event.midi) : event.root;
+}
+
+/** The key the song is currently read in (manual, or Auto's assumption); null before any evidence. */
+export function assumedKey(song: Song): MusicalKey | null {
+  return resolveAssumedKey(song.key, usedPitchClasses(song), pitchClassHistogram(song)).assumed;
 }
 
 // ---- key setting ----------------------------------------------------------

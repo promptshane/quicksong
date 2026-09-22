@@ -44,6 +44,15 @@ export function keyScale(key: MusicalKey): PitchClass[] {
   return steps.map((s) => ((key.tonic + s) % 12) as PitchClass);
 }
 
+/**
+ * Scale degree (0 = tonic … 6 = seventh) of a pitch class in a key, or null
+ * when it is outside the key's scale.
+ */
+export function scaleDegree(pc: number, key: MusicalKey): number | null {
+  const degree = keyScale(key).indexOf((((pc % 12) + 12) % 12) as PitchClass);
+  return degree < 0 ? null : degree;
+}
+
 /** Pitch classes of a key's diatonic scale. */
 export function keyPitchClasses(key: MusicalKey): Set<PitchClass> {
   return new Set(keyScale(key));

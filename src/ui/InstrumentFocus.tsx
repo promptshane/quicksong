@@ -1,6 +1,6 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPianoLayer, duplicatePianoLayer } from '../model/piano';
-import { LAYER_TYPE_LABELS, appendLayer, createLayer, duplicateLayer, removeLayer, toggleLayerMute } from '../model/song';
+import { LAYER_TYPE_LABELS, appendLayer, assumedKey, createLayer, duplicateLayer, removeLayer, toggleLayerMute } from '../model/song';
 import type { AnyLayer, GuitarLayerType, Song } from '../model/types';
 import { useStore, type View } from '../state/store';
 import { Overview } from './Overview';
@@ -54,6 +54,7 @@ export function InstrumentFocus({ instrument }: { instrument: InstrumentId }) {
   const commit = useStore((s) => s.commit);
   const setView = useStore((s) => s.setView);
   const layers = config.layers(song);
+  const songKey = useMemo(() => assumedKey(song), [song]);
   const [picking, setPicking] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [duplicateTarget, setDuplicateTarget] = useState<string | null>(null);
@@ -194,7 +195,7 @@ export function InstrumentFocus({ instrument }: { instrument: InstrumentId }) {
                   </button>
                 </div>
                 <button className="row-lane layer-card-lane" onClick={() => openLayer(layer.id)} aria-label={`Open ${layer.name}`}>
-                  <Overview song={song} layer={layer} hits />
+                  <Overview song={song} layer={layer} hits colorKey={songKey} />
                 </button>
               </div>
             ))}

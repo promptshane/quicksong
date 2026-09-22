@@ -60,6 +60,7 @@ export function TopBar() {
             <span className="metro-dot" aria-hidden />
             Metronome {metronomeOn ? 'on' : 'off'}
           </button>
+          <div className="panel-hint compact">Clicks along whenever the song is playing.</div>
           <div className="sheet-row center">
             <button className="btn icon" onClick={() => setBpm(song.bpm - 1)} aria-label="Slower">
               −

@@ -14,6 +14,15 @@
   --chord: #7c9cff;
   --note: #f6a6ff;
   --piano: #f0d9a8;
+  /* Scale-degree colours (I..vii), rainbow order; see ui/degreeColor.ts. */
+  --deg-0: #f87171;
+  --deg-1: #fb923c;
+  --deg-2: #facc15;
+  --deg-3: #4ade80;
+  --deg-4: #38bdf8;
+  --deg-5: #a78bfa;
+  --deg-6: #f472b6;
+  --deg-out: #9aa0aa;
   --radius: 12px;
   --tap: 44px;
   --safe-top: env(safe-area-inset-top, 0px);
@@ -86,25 +95,6 @@ input[type='range'] {
   .app {
     height: 100vh;
   }
-}
-
-/*
- * Installed on iOS (black-translucent + viewport-fit=cover) the page runs
- * under the status bar, and iOS 26 lays its soft "scroll edge" blur over
- * whatever is there — which also hazes the top of the header. A solid,
- * fixed element covering that strip gives iOS an opaque top edge to use
- * instead, and keeps sheets and scrolled content out from under the clock.
- * Zero height everywhere without a top inset.
- */
-.status-bar-shim {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: var(--safe-top);
-  background: var(--bg);
-  z-index: 60;
-  pointer-events: none;
 }
 
 .screen {
@@ -1642,4 +1632,20 @@ input[type='range'] {
 }
 .metronome-toggle.active .metro-dot {
   background: var(--accent);
+}
+
+/* ---- key colour legend (Song Home) ------------------------------------- */
+
+.key-legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 0 16px 2px;
+  font-size: 12px;
+  font-weight: 650;
+}
+.key-legend-chord {
+  flex: 1;
+  text-align: center;
+  white-space: nowrap;
 }
