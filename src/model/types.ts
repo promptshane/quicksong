@@ -214,6 +214,20 @@ export interface DrumHit extends EventBase {
   piece: DrumPiece;
 }
 
+/**
+ * Repeat settings for a drum phrase. `repeatCount: null` runs through the
+ * song's timeline; otherwise it is the total number of phrase passes.
+ * Break loop numbers are one-based, as shown in the editor.
+ */
+export interface DrumLoopSettings {
+  patternBars: number;
+  repeatCount: number | null;
+  break?: { startLoop: number; length: number };
+  variationEvery?: number;
+  /** A complete alternate phrase, copied from the main phrase when enabled. */
+  variationEvents?: DrumHit[];
+}
+
 export interface DrumLayer {
   id: string;
   type: 'drums';
@@ -221,6 +235,8 @@ export interface DrumLayer {
   volume: number;
   muted: boolean;
   events: DrumHit[];
+  /** Absent on ordinary drum layers and all songs saved before drum loops. */
+  loop?: DrumLoopSettings;
 }
 
 export type AnyLayer = GuitarLayer | AnyPianoLayer | DrumLayer;

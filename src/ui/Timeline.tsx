@@ -347,7 +347,10 @@ export function Timeline({ song, layer, colorKey = null }: TimelineProps) {
 
 /** Velocity of one held drum hit; one drag is one Undo step, heard on release. */
 function DrumHitVelocity({ layerId, hitId }: { layerId: string; hitId: string }) {
-  const hit = useStore((s) => s.song.drums.layers.find((l) => l.id === layerId)?.events.find((e) => e.id === hitId));
+  const hit = useStore((s) => {
+    const layer = s.song.drums.layers.find((l) => l.id === layerId);
+    return layer?.events.find((e) => e.id === hitId) ?? layer?.loop?.variationEvents?.find((e) => e.id === hitId);
+  });
   const gesture = useRef(0);
   if (!hit) return null;
   return (

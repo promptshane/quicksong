@@ -2,7 +2,7 @@ import { getAudioEngine } from '../audio/engine';
 import { renderChordPreview, renderEvent, renderPianoPreview } from '../audio/render';
 import { transport } from '../audio/transport';
 import { voicingsFor } from '../model/chords';
-import { DRUM_MIDI, drumHitAt, toggleDrumHit } from '../model/drums';
+import { configureDrumLoop, DRUM_MIDI, drumHitForEdit, toggleDrumLoopCell } from '../model/drums';
 import { setGuitarChord, toggleGuitarChordNote } from '../model/guitarChords';
 import { clampMidi } from '../model/music';
 import { createPianoChord, pianoChordNotes, setPianoChord, togglePianoNote } from '../model/piano';
@@ -33,6 +33,7 @@ import type {
   ChordStyle,
   ChordStyleOverride,
   DrumPiece,
+  DrumLoopSettings,
   NoteEvent,
   PianoEvent,
   PitchClass,
@@ -270,9 +271,14 @@ export function toggleDrumCell(layerId: string, piece: DrumPiece, start: number)
   const { song, commit } = useStore.getState();
   const layer = song.drums.layers.find((l) => l.id === layerId);
   if (!layer) return;
-  const adding = !drumHitAt(layer, piece, start);
-  commit((s) => toggleDrumHit(s, layerId, piece, start));
+  const adding = !drumHitForEdit(layer, piece, start, song.timeSignature);
+  commit((s) => toggleDrumLoopCell(s, layerId, piece, start));
   if (adding) auditionDrum(piece);
+}
+
+/** Create, update, or remove a drum pattern loop in one undoable edit. */
+export function setDrumLoop(layerId: string, settings: DrumLoopSettings | null): void {
+  useStore.getState().commit((song) => configureDrumLoop(song, layerId, settings));
 }
 
 // ---- any event -------------------------------------------------------------------

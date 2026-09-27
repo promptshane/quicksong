@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { DRUM_PIECES, drumHitAt } from '../model/drums';
+import { DRUM_PIECES, drumCellStyle, drumHitAtTimeline } from '../model/drums';
 import { eighthSlotLabel, positionLabel } from '../model/time';
 import type { DrumHit, DrumLayer, TimeSignature } from '../model/types';
 import { toggleDrumCell } from '../state/actions';
@@ -21,9 +21,9 @@ interface DrumLaneProps {
 
 /**
  * The drum grid inside the timeline: one row per drum (hi-hat, snare, kick)
- * and one cell per eighth note across the whole song. Tap a cell to add a
- * hit, tap a hit to remove it, hold a hit for its velocity. A swipe scrolls
- * the timeline as usual (it never toggles anything).
+ * and one cell per eighth note across the whole song. Repeated cells edit
+ * their source phrase; highlighted variation cells edit the alternate phrase.
+ * Tap to toggle a hit, hold one for its velocity, or swipe to scroll.
  */
 export function DrumLane({ layer, totalBeats, pxPerBeat, step, timeSignature, onHoldHit }: DrumLaneProps) {
   const hold = useRef<{ x: number; y: number; timer: ReturnType<typeof setTimeout>; fired: boolean } | null>(null);
@@ -41,12 +41,13 @@ export function DrumLane({ layer, totalBeats, pxPerBeat, step, timeSignature, on
       {DRUM_PIECES.map(({ piece, label }, row) =>
         Array.from({ length: slots }, (_, slot) => {
           const start = slot * step;
-          const hit = drumHitAt(layer, piece, start);
+          const hit = drumHitAtTimeline(layer, piece, start, totalBeats, timeSignature);
+          const loopStyle = drumCellStyle(layer, start, timeSignature);
           const beatInBar = start % timeSignature.beatsPerBar;
           return (
             <button
               key={`${piece}-${slot}`}
-              className={`drum-cell ${hit ? 'on' : ''} ${Math.abs(beatInBar - Math.round(beatInBar)) < 1e-6 ? 'on-beat' : ''}`}
+              className={`drum-cell ${hit ? 'on' : ''} ${loopStyle.variation ? 'loop-variation' : ''} ${loopStyle.broken ? 'loop-break' : ''} ${Math.abs(beatInBar - Math.round(beatInBar)) < 1e-6 ? 'on-beat' : ''}`}
               style={{
                 left: start * pxPerBeat,
                 top: row * DRUM_ROW_HEIGHT + 2,
@@ -85,8 +86,9 @@ export function DrumLane({ layer, totalBeats, pxPerBeat, step, timeSignature, on
                 toggleDrumCell(layer.id, piece, start);
               }}
               aria-pressed={!!hit}
-              aria-label={`${label} at ${positionLabel(start, timeSignature)} (${eighthSlotLabel(Math.round(beatInBar / step), timeSignature)})`}
+              aria-label={`${label} at ${positionLabel(start, timeSignature)}${loopStyle.variation ? ', variation' : ''}${loopStyle.broken ? ', loop break' : ''} (${eighthSlotLabel(Math.round(beatInBar / step), timeSignature)})`}
               data-drum-cell={`${piece}-${slot}`}
+              data-loop-cycle={loopStyle.cycle + 1}
             />
           );
         }),

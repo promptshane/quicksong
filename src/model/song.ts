@@ -305,12 +305,22 @@ export function addEvent(song: Song, layerId: string, event: AnyEvent): Song {
 export function updateEvent(song: Song, layerId: string, eventId: string, fn: (e: AnyEvent) => AnyEvent): Song {
   return updateAnyLayer(song, layerId, (layer) => {
     const events = sortEvents((layer.events as AnyEvent[]).map((e) => (e.id === eventId ? fn(e) : e)));
+    if (layer.type === 'drums' && layer.loop?.variationEvents?.some((e) => e.id === eventId)) {
+      const variationEvents = sortEvents(layer.loop.variationEvents.map((e) => (e.id === eventId ? (fn(e) as typeof e) : e)));
+      return { ...layer, events: layer.events, loop: { ...layer.loop, variationEvents } } as typeof layer;
+    }
     return { ...layer, events };
   });
 }
 
 export function removeEvent(song: Song, layerId: string, eventId: string): Song {
   return updateAnyLayer(song, layerId, (layer) => {
+    if (layer.type === 'drums' && layer.loop?.variationEvents?.some((e) => e.id === eventId)) {
+      return {
+        ...layer,
+        loop: { ...layer.loop, variationEvents: layer.loop.variationEvents.filter((e) => e.id !== eventId) },
+      } as typeof layer;
+    }
     const events = (layer.events as AnyEvent[]).filter((e) => e.id !== eventId);
     return { ...layer, events };
   });

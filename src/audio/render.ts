@@ -132,7 +132,37 @@ export function renderSong(song: Song): ScheduledNote[] {
   }
   for (const layer of song.drums.layers) {
     const emit = emitter(layer, out, 'drums');
+    const loop = layer.loop;
+    if (!loop) {
+      for (const hit of layer.events) {
+        emit({ eventId: hit.id, midi: DRUM_MIDI[hit.piece], velocity: hit.velocity, beat: hit.start, durationBeats: hit.duration, offsetSec: 0 });
+      }
+      continue;
+    }
+
+    const totalBeats = songBeats(song);
+    const patternBeats = loop.patternBars * song.timeSignature.beatsPerBar;
+    const cycles = loop.repeatCount ?? Math.ceil(totalBeats / patternBeats);
+    for (let cycle = 0; cycle < cycles; cycle++) {
+      const loopNumber = cycle + 1;
+      if (cycle * patternBeats >= totalBeats - 1e-6) break;
+      if (loop.break && loopNumber >= loop.break.startLoop && loopNumber < loop.break.startLoop + loop.break.length) continue;
+      const pattern = loop.variationEvery && loopNumber % loop.variationEvery === 0 ? loop.variationEvents ?? layer.events : layer.events;
+      for (const hit of pattern) {
+        if (hit.start >= patternBeats - 1e-6) continue;
+        const beat = cycle * patternBeats + hit.start;
+        if (beat >= totalBeats - 1e-6) continue;
+        emit({ eventId: hit.id, midi: DRUM_MIDI[hit.piece], velocity: hit.velocity, beat, durationBeats: hit.duration, offsetSec: 0 });
+      }
+    }
+
+    // Keep any hand-entered hits after the pattern as one-off fills.
     for (const hit of layer.events) {
+      if (hit.start < patternBeats - 1e-6 || hit.start >= totalBeats - 1e-6) continue;
+      const cycle = Math.floor(hit.start / patternBeats + 1e-6);
+      const loopNumber = cycle + 1;
+      const inRun = loop.repeatCount === null || cycle < loop.repeatCount;
+      if (inRun && loop.break && loopNumber >= loop.break.startLoop && loopNumber < loop.break.startLoop + loop.break.length) continue;
       emit({ eventId: hit.id, midi: DRUM_MIDI[hit.piece], velocity: hit.velocity, beat: hit.start, durationBeats: hit.duration, offsetSec: 0 });
     }
   }

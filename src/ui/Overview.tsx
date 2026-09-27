@@ -2,6 +2,7 @@ import { useTransport } from '../audio/transport';
 import { loopRange, songBars, songBeats } from '../model/time';
 import { scaleDegree } from '../model/keys';
 import { eventRootPitchClass, isLoopOn } from '../model/song';
+import { drumHitsForTimeline } from '../model/drums';
 import type { AnyLayer, MusicalKey, Song } from '../model/types';
 import { useStore } from '../state/store';
 import { degreeColor } from './degreeColor';
@@ -26,19 +27,20 @@ export function Overview({ song, layer, showPlayhead = true, hits = false, color
   const cursor = useStore((s) => s.cursorBeat);
   const pct = (beat: number) => `${(beat / total) * 100}%`;
   const loop = loopRange(song);
+  const events = layer.type === 'drums' ? drumHitsForTimeline(layer, total, song.timeSignature) : layer.events;
 
   return (
     <div className="overview" data-layer-id={layer.id}>
       {Array.from({ length: bars }, (_, i) => (
         <div key={i} className="bar-line" style={{ left: pct(i * song.timeSignature.beatsPerBar) }} />
       ))}
-      {layer.events.map((ev) => {
+      {events.map((ev) => {
         const pc = eventRootPitchClass(ev);
         // Drum hits have no pitch: they keep the drum colour.
         const degree = colorKey && pc !== null ? scaleDegree(pc, colorKey) : undefined;
         return (
           <div
-            key={ev.id}
+            key={`${ev.id}-${ev.start}`}
             className={`clip ${ev.kind} ${hits ? 'hit' : ''}`}
             style={{
               left: pct(ev.start),

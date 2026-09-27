@@ -1847,6 +1847,66 @@ input[type='range'] {
 .drum-pad {
   min-height: 56px;
 }
+.drum-loop-setup {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+}
+.drum-loop-setup > .btn {
+  width: 100%;
+}
+.drum-loop-heading {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.drum-loop-heading .panel-label {
+  color: var(--text);
+}
+.drum-loop-heading .btn {
+  min-height: 32px;
+}
+.drum-loop-options {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.drum-loop-options label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.drum-loop-options select {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--bg-3);
+  font: inherit;
+  font-size: 13px;
+}
+.drum-cell.loop-variation {
+  box-shadow: inset 0 0 0 2px var(--warn);
+}
+.drum-cell.loop-break {
+  opacity: 0.65;
+  background: rgba(251, 191, 36, 0.11);
+}
+.drum-cell.loop-break.on {
+  background: rgba(251, 191, 36, 0.28);
+}
 .overview .clip.drum {
   background: var(--text-dim);
 }
