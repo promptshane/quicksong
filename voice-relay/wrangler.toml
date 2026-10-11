@@ -1,0 +1,11 @@
+name = "quicksong-voice"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "quicksong-voice"
+database_id = "REPLACE_WITH_YOUR_DATABASE_ID"
+
+[vars]
+ALLOWED_ORIGIN = "https://promptshane.github.io"

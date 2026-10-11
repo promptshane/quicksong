@@ -9,6 +9,7 @@ import { DrumsEditor } from './ui/DrumsEditor';
 import { NotesEditor } from './ui/NotesEditor';
 import { ProjectsScreen } from './ui/ProjectsScreen';
 import { ToastHost } from './ui/Toast';
+import { useVoiceRelay } from './voice/useVoiceRelay';
 
 const BUILD_TIME = import.meta.env.VITE_BUILD_TIME as string | undefined;
 const BUILD_SHA = (import.meta.env.VITE_COMMIT_SHA as string | undefined)?.slice(0, 7);
@@ -24,6 +25,7 @@ function buildLabel(): string {
 }
 
 export function App() {
+  useVoiceRelay();
   const view = useStore((s) => s.view);
   const hydrated = useStore((s) => s.hydrated);
   const [showLaunch, setShowLaunch] = useState(true);

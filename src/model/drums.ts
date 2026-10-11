@@ -118,8 +118,7 @@ export function configureDrumLoop(song: Song, layerId: string, settings: DrumLoo
           return !inBreak;
         })
         .map((hit) => ({ ...hit, id: newId('d') }));
-      delete updated.loop;
-      return updated;
+      return { ...updated, loop: undefined };
     });
   }
 
