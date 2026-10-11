@@ -7,6 +7,7 @@ import { PlayButton } from './PlayButton';
 import { toast } from './toastStore';
 import { TopBar } from './TopBar';
 import { UndoRedo } from './UndoRedo';
+import { VoiceControl } from './VoiceControl';
 
 const INSTRUMENTS = [
   { id: 'drums', label: 'Drums', icon: '🥁', enabled: true },
@@ -35,6 +36,7 @@ export function HomeScreen() {
           {project?.name ?? 'Song'}
         </div>
         <div className="header-side right">
+          <VoiceControl />
           <UndoRedo />
         </div>
       </div>
