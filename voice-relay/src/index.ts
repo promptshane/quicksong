@@ -19,7 +19,7 @@ function respond(data: unknown, status = 200, origin: string | null = null): Res
     headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
     headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   }
-  return new Response(JSON.stringify(data), { status, headers });
+  return new Response(status === 204 ? null : JSON.stringify(data), { status, headers });
 }
 
 export default {
@@ -61,6 +61,9 @@ export default {
         const command = input.command;
         if (!command || typeof command !== 'object' || Array.isArray(command)) return respond({ error: 'Invalid command' }, 400, corsOrigin);
         // The client independently checks each supported command and its arguments.
+        // Keep the private mailbox small over time.
+        await env.DB.prepare('DELETE FROM commands WHERE (acknowledged_at IS NOT NULL AND acknowledged_at < ?) OR created_at < ?')
+          .bind(Date.now() - 24 * 60 * 60 * 1000, Date.now() - 48 * 60 * 60 * 1000).run();
         const id = crypto.randomUUID();
         await env.DB.prepare('INSERT INTO commands (id, payload, created_at) VALUES (?, ?, ?)')
           .bind(id, JSON.stringify(command), Date.now()).run();
