@@ -27,36 +27,46 @@ async function hold(page: Page, locator: Locator) {
   await locator.dispatchEvent('click', point);
 }
 
-test('drums: place kick, snare and hi-hat hits one by one', async ({ page }) => {
+test('drums: six sound lanes with sixteenth-note tap editing', async ({ page }) => {
   await page.getByRole('button', { name: 'Drums' }).click();
   await expect(page.locator('[data-screen="drums"]')).toBeVisible();
   // One kind of drum layer: + Layer opens it straight away.
   await page.getByTestId('add-layer').click();
   await expect(page.locator('[data-screen="layer"][data-layer-type="drums"]')).toBeVisible();
-  await expect(page.locator('.drum-row-labels')).toHaveText(['Hi-hat', 'Snare', 'Kick'].join(''));
-  // 3 rows × 8 eighths in the one bar.
-  await expect(page.locator('.drum-cell')).toHaveCount(24);
+  await expect(page.locator('.drum-row-labels')).toHaveText(['Kick', 'Snare', 'Hats', 'Open hat', 'Ghost snare', 'Shaker'].join(''));
+  // 6 rows × 16 sixteenths in the one 4/4 bar.
+  await expect(page.locator('.drum-cell')).toHaveCount(96);
 
   const cell = (piece: string, slot: number) => page.locator(`[data-drum-cell="${piece}-${slot}"]`);
   await cell('kick', 0).click();
-  await cell('snare', 2).click();
-  for (let i = 0; i < 8; i++) await cell('hat', i).click();
+  await cell('snare', 4).click();
+  for (let i = 0; i < 16; i += 2) await cell('hat', i).click();
   await expect(page.locator('.drum-cell.on')).toHaveCount(10);
 
   // Tap again removes; undo brings it back.
-  await cell('hat', 7).click();
-  await expect(cell('hat', 7)).toHaveAttribute('aria-pressed', 'false');
+  await cell('hat', 14).click();
+  await expect(cell('hat', 14)).toHaveAttribute('aria-pressed', 'false');
   await page.getByTestId('undo').click();
-  await expect(cell('hat', 7)).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.toast')).toHaveText('Undo: Delete Hi-hat · Drums 1');
+  await expect(cell('hat', 14)).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.toast')).toHaveText('Undo: Delete Hats · Drums 1');
 
   // Hold a hit: velocity (and delete).
-  await hold(page, cell('snare', 2));
+  await hold(page, cell('snare', 4));
   await expect(page.locator('.sheet[aria-label="Snare at 1.2"]')).toBeVisible();
   await page.getByTestId('drum-velocity').fill('40');
   await expect(page.getByTestId('drum-velocity-value')).toHaveText('40');
   await page.getByTestId('context-delete-event').click();
-  await expect(cell('snare', 2)).toHaveAttribute('aria-pressed', 'false');
+  await expect(cell('snare', 4)).toHaveAttribute('aria-pressed', 'false');
+
+  // New sounds have independent cells at true sixteenth-step positions.
+  await cell('ghostSnare', 7).click();
+  await cell('openHat', 14).click();
+  await cell('shaker', 15).click();
+  await expect(cell('ghostSnare', 7)).toHaveAttribute('aria-pressed', 'true');
+  await cell('ghostSnare', 7).click();
+  await expect(cell('ghostSnare', 7)).toHaveAttribute('aria-pressed', 'false');
+  await cell('openHat', 14).click();
+  await cell('shaker', 15).click();
 
   // Pads only play a sound.
   await page.locator('[data-drum-pad="kick"]').click();

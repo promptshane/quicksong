@@ -84,8 +84,12 @@ export function positionLabel(beat: number, ts: TimeSignature): string {
   const bar = Math.floor(beat / ts.beatsPerBar + 1e-6) + 1;
   const within = beat - (bar - 1) * ts.beatsPerBar;
   const inBar = Math.floor(within + 1e-6) + 1;
-  const offbeat = within - Math.floor(within + 1e-6) > 1e-6;
-  return `${bar}.${inBar}${offbeat ? '&' : ''}`;
+  const fraction = within - Math.floor(within + 1e-6);
+  // A sixteenth-note drum hit is 1e / 1& / 1a rather than three ambiguous 1& labels.
+  const subdivisions = ts.beatUnit === 4 ? ['', 'e', '&', 'a'] : ['', '&'];
+  const index = Math.round(fraction * (subdivisions.length));
+  const suffix = subdivisions[index] ?? (fraction > 1e-6 ? '&' : '');
+  return `${bar}.${inBar}${suffix}`;
 }
 
 /** Length label like "2 beats" or "1 bar". */

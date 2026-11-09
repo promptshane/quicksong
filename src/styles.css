@@ -1813,8 +1813,8 @@ input[type='range'] {
 .drum-row-labels span {
   display: flex;
   align-items: center;
-  width: 56px;
-  padding: 0 6px;
+  width: 100px;
+  padding: 0 7px;
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
@@ -1824,7 +1824,16 @@ input[type='range'] {
 }
 /* The drum grid starts to the right of the row names. */
 .timeline-wrap.drums .timeline-inner {
-  margin-left: 60px;
+  margin-left: 102px;
+  height: calc(40px + 6 * 32px);
+}
+.ruler .drum-beat-number {
+  position: absolute;
+  top: 3px;
+  padding-left: 5px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 650;
 }
 .drum-cell {
   position: absolute;
@@ -1837,8 +1846,18 @@ input[type='range'] {
   background: rgba(255, 255, 255, 0.08);
 }
 .drum-cell.on {
-  background: var(--text);
+  background: var(--drum-color, var(--text));
 }
+.drum-cell.beat-start {
+  border-left: 2px solid rgba(255, 255, 255, 0.2);
+}
+/* Same piece colours for the pattern cells and sound-preview pads. */
+[data-drum-piece='kick'] { --drum-color: #fb7185; }
+[data-drum-piece='snare'] { --drum-color: #f6c454; }
+[data-drum-piece='hat'] { --drum-color: #22d3ee; }
+[data-drum-piece='openHat'] { --drum-color: #a78bfa; }
+[data-drum-piece='ghostSnare'] { --drum-color: #34d399; }
+[data-drum-piece='shaker'] { --drum-color: #fb923c; }
 .drum-pads {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1846,6 +1865,9 @@ input[type='range'] {
 }
 .drum-pad {
   min-height: 56px;
+  border: 1px solid color-mix(in srgb, var(--drum-color) 48%, var(--line));
+  color: var(--drum-color);
+  background: color-mix(in srgb, var(--drum-color) 10%, var(--bg-2));
 }
 .drum-loop-setup {
   display: flex;
