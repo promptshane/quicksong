@@ -116,7 +116,7 @@ export function configureDrumLoop(song: Song, layerId: string, settings: DrumLoo
   if (!settings) {
     return updateAnyLayer(song, layerId, (current) => {
       if (current.type !== 'drums' || !current.loop) return current;
-      const updated = { ...current } as DrumLayer;
+      const updated = { ...current };
       const loop = current.loop;
       const patternBeats = loop.patternBars * song.timeSignature.beatsPerBar;
       updated.events = drumHitsForTimeline(current, songBeats(song), song.timeSignature)
@@ -128,7 +128,7 @@ export function configureDrumLoop(song: Song, layerId: string, settings: DrumLoo
           return !inBreak;
         })
         .map((hit) => ({ ...hit, id: newId('d') }));
-      delete updated.loop;
+      delete (updated as DrumLayer).loop;
       return updated;
     });
   }
