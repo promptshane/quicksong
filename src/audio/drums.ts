@@ -1,10 +1,9 @@
 import type { Instrument } from './engine';
 
 /**
- * V1 drum kit, synthesised so it needs no samples: a pitch-dropping sine for
- * the kick, a noise burst over a short tone for the snare, and bright
- * high-passed noise for the hi-hat. Plays General-MIDI drum numbers
- * (36 kick, 38 snare, 42 closed hi-hat); anything else is ignored.
+ * Six-piece sample-free drum kit: kick, snare, closed/open hats, ghost
+ * snare and shaker. General-MIDI pitches allow the existing sequencer,
+ * transport and exports to treat each sound as an independent drum lane.
  */
 export class DrumKit implements Instrument {
   private ctx: AudioContext;
@@ -29,6 +28,9 @@ export class DrumKit implements Instrument {
     if (midi === 36) this.kick(start, level);
     else if (midi === 38) this.snare(start, level);
     else if (midi === 42) this.hat(start, level);
+    else if (midi === 46) this.openHat(start, level);
+    else if (midi === 40) this.snare(start, level * 0.32);
+    else if (midi === 82) this.shaker(start, level);
   }
 
   private voice(sources: AudioScheduledSourceNode[], env: GainNode, stopAt: number): void {
@@ -89,6 +91,30 @@ export class DrumKit implements Instrument {
     noise.connect(high).connect(env);
     noise.start(start);
     this.voice([noise], env, start + 0.08);
+  }
+
+  private openHat(start: number, level: number): void {
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = this.noise;
+    const high = this.ctx.createBiquadFilter();
+    high.type = 'highpass';
+    high.frequency.value = 5600;
+    const env = this.envelope(start, level * 0.38, 0.48);
+    noise.connect(high).connect(env);
+    noise.start(start);
+    this.voice([noise], env, start + 0.52);
+  }
+
+  private shaker(start: number, level: number): void {
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = this.noise;
+    const high = this.ctx.createBiquadFilter();
+    high.type = 'highpass';
+    high.frequency.value = 8500;
+    const env = this.envelope(start, level * 0.24, 0.042);
+    noise.connect(high).connect(env);
+    noise.start(start);
+    this.voice([noise], env, start + 0.05);
   }
 
   allNotesOff(): void {

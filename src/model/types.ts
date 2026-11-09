@@ -206,9 +206,9 @@ export interface PianoNotesLayer {
 
 export type AnyPianoLayer = PianoLayer | PianoNotesLayer;
 
-export type DrumPiece = 'kick' | 'snare' | 'hat';
+export type DrumPiece = 'kick' | 'snare' | 'hat' | 'openHat' | 'ghostSnare' | 'shaker';
 
-/** One drum hit, placed individually on the eighth-note grid. */
+/** One drum hit, placed individually on a sixteenth-note grid. */
 export interface DrumHit extends EventBase {
   kind: 'drum';
   piece: DrumPiece;

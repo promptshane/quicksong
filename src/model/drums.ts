@@ -5,20 +5,30 @@ import type { DrumHit, DrumLayer, DrumLoopSettings, DrumPiece, Song, TimeSignatu
 import { DEFAULT_VELOCITY } from './types';
 
 /**
- * Drums: kick, snare and hi-hat, each hit placed on the eighth-note grid.
+ * Drums: six independently editable sounds, each hit placed on the sixteenth-note grid.
  * A layer may repeat a phrase, substitute an alternate phrase, or leave a
  * short gap in its repeats. A hit is one grid step long.
  */
 
 /** Top to bottom, as the drum grid shows them. */
 export const DRUM_PIECES: { piece: DrumPiece; label: string }[] = [
-  { piece: 'hat', label: 'Hi-hat' },
-  { piece: 'snare', label: 'Snare' },
   { piece: 'kick', label: 'Kick' },
+  { piece: 'snare', label: 'Snare' },
+  { piece: 'hat', label: 'Hats' },
+  { piece: 'openHat', label: 'Open hat' },
+  { piece: 'ghostSnare', label: 'Ghost snare' },
+  { piece: 'shaker', label: 'Shaker' },
 ];
 
 /** General-MIDI drum numbers, so drum hits travel through the scheduler like notes. */
-export const DRUM_MIDI: Record<DrumPiece, number> = { kick: 36, snare: 38, hat: 42 };
+export const DRUM_MIDI: Record<DrumPiece, number> = {
+  kick: 36, snare: 38, hat: 42, openHat: 46, ghostSnare: 40, shaker: 82,
+};
+
+/** Sixteenth-note timing: 16 steps per 4/4 bar, 12 per 6/8 bar. */
+export function drumStepBeats(ts: TimeSignature): number {
+  return eighthBeats(ts) / 2;
+}
 
 export function drumPieceForMidi(midi: number): DrumPiece | null {
   return (Object.keys(DRUM_MIDI) as DrumPiece[]).find((p) => DRUM_MIDI[p] === midi) ?? null;
@@ -177,7 +187,7 @@ export function configureDrumLoop(song: Song, layerId: string, settings: DrumLoo
 
 /** Tap on the drum grid: add a hit there, or take the one that is there away. */
 export function toggleDrumHit(song: Song, layerId: string, piece: DrumPiece, start: number): Song {
-  const step = eighthBeats(song.timeSignature);
+  const step = drumStepBeats(song.timeSignature);
   return updateAnyLayer(song, layerId, (layer) => {
     if (layer.type !== 'drums') return layer;
     const existing = drumHitAt(layer, piece, start);
@@ -206,7 +216,7 @@ export function toggleDrumLoopCell(song: Song, layerId: string, piece: DrumPiece
     }
     const nextHits = existing
       ? hits.filter((e) => e.id !== existing.id)
-      : [...hits, createDrumHit(piece, position.localStart, eighthBeats(song.timeSignature))].sort((a, b) => a.start - b.start);
+      : [...hits, createDrumHit(piece, position.localStart, drumStepBeats(song.timeSignature))].sort((a, b) => a.start - b.start);
     if (!variation) return { ...current, events: nextHits };
     return { ...current, loop: { ...current.loop, variationEvents: nextHits } };
   });
@@ -214,7 +224,7 @@ export function toggleDrumLoopCell(song: Song, layerId: string, piece: DrumPiece
 
 /** All audible drum hits across the song, including generated phrase repeats. */
 export function drumHitsForTimeline(layer: DrumLayer, totalBeats: number, ts: TimeSignature): DrumHit[] {
-  const step = eighthBeats(ts);
+  const step = drumStepBeats(ts);
   const hits: DrumHit[] = [];
   for (let slot = 0; slot < Math.ceil(totalBeats / step); slot++) {
     const start = slot * step;

@@ -8,7 +8,7 @@ import {
 import { useTransport } from '../audio/transport';
 import { eventLabel } from '../model/labels';
 import { eventRootPitchClass, isLoopOn } from '../model/song';
-import { DRUM_PIECES } from '../model/drums';
+import { DRUM_PIECES, drumStepBeats } from '../model/drums';
 import { eighthBeats, evenPhraseBars, loopRange, positionLabel, snapToEighth, songBars, songBeats } from '../model/time';
 import type { AnyEvent, AnyLayer, MusicalKey, PianoEvent, Song } from '../model/types';
 import { addTimelineSlot, auditionDrum, deleteEvent, moveEvent, setEventVelocity } from '../state/actions';
@@ -87,7 +87,15 @@ export function Timeline({ song, layer, colorKey = null }: TimelineProps) {
   const badge = loopBadgeText(song);
   const loop = loopRange(song);
   const width = contentWidth + ADD_SLOT_WIDTH;
-  const step = eighthBeats(ts);
+  const step = layer.type === 'drums' ? drumStepBeats(ts) : eighthBeats(ts);
+  const setTimelineZoom = useStore((s) => s.setTimelineZoom);
+  const drumZoomInitialized = useRef(false);
+  useEffect(() => {
+    if (layer.type !== 'drums' || drumZoomInitialized.current) return;
+    drumZoomInitialized.current = true;
+    // Sixteen small steps need a usable finger target on a phone.
+    if (pxPerBar < 352) setTimelineZoom(352);
+  }, [layer.type, pxPerBar, setTimelineZoom]);
   const selected = (layer.events as AnyEvent[]).find((e) => e.id === selectedId) ?? null;
 
   // Selecting a block and selecting the loop are exclusive.
@@ -119,7 +127,8 @@ export function Timeline({ song, layer, colorKey = null }: TimelineProps) {
 
   const onLaneClick = (e: ReactMouseEvent) => {
     if ((e.target as HTMLElement).closest('.block, .add-slot, .edge-handle, .loop-bar, .loop-edge, .loop-reset')) return;
-    const beat = snapToEighth(beatAtClientX(e.clientX), ts);
+    const at = beatAtClientX(e.clientX);
+    const beat = layer.type === 'drums' ? Math.round(at / step) * step : snapToEighth(at, ts);
     setCursor(Math.min(beat, totalBeats - step));
     select(null);
     setLoopSelected(false);
@@ -242,11 +251,17 @@ export function Timeline({ song, layer, colorKey = null }: TimelineProps) {
         <div className="timeline" data-testid="timeline" ref={scrollRef}>
           <div className="timeline-inner" ref={innerRef} style={{ width, minWidth: '100%' }} onClick={onLaneClick}>
             <div className="ruler" style={{ width: contentWidth, right: 'auto' }}>
-              {Array.from({ length: bars }, (_, i) => (
-                <span key={i} className="bar-label" style={{ left: i * pxPerBar }}>
-                  {i + 1}
-                </span>
-              ))}
+              {layer.type === 'drums'
+                ? Array.from({ length: totalBeats }, (_, i) => (
+                  <span key={i} className="drum-beat-number" style={{ left: i * pxPerBeat }}>
+                    {(i % ts.beatsPerBar) + 1}
+                  </span>
+                ))
+                : Array.from({ length: bars }, (_, i) => (
+                  <span key={i} className="bar-label" style={{ left: i * pxPerBar }}>
+                    {i + 1}
+                  </span>
+                ))}
               {/* Playback loops the region; an even phrase (1, 2, 4, 8…) loops most naturally. */}
               <span className={`loop-badge ${badge.even ? 'even' : ''}`} data-testid="loop-badge">
                 {badge.text}

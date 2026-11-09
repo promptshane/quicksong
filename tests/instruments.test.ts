@@ -100,12 +100,33 @@ describe('drums', () => {
     song = toggleDrumHit(song, layer.id, 'hat', 0.5);
     const hits = () => (findAnyLayer(song, layer.id) as DrumLayer).events.map((e) => [e.piece, e.start, e.duration]);
     expect(hits()).toEqual([
-      ['kick', 0, 0.5],
-      ['hat', 0.5, 0.5],
-      ['snare', 1, 0.5],
+      ['kick', 0, 0.25],
+      ['hat', 0.5, 0.25],
+      ['snare', 1, 0.25],
     ]);
     song = toggleDrumHit(song, layer.id, 'snare', 1);
     expect(hits()).toHaveLength(2);
+  });
+
+  it('supports six independent drum lanes at sixteenth-note positions', () => {
+    const { song: base, layer } = drumSong();
+    const hits = [
+      ['kick', 0], ['snare', 1], ['hat', 0.5],
+      ['openHat', 3.5], ['ghostSnare', 1.75], ['shaker', 0.25],
+    ] as const;
+    let song = base;
+    for (const [piece, beat] of hits) song = toggleDrumHit(song, layer.id, piece, beat);
+    expect((findAnyLayer(song, layer.id) as DrumLayer).events).toHaveLength(6);
+    expect(renderSong(song).map((n) => [n.midi, n.beat])).toEqual([
+      [DRUM_MIDI.kick, 0],
+      [DRUM_MIDI.shaker, 0.25],
+      [DRUM_MIDI.hat, 0.5],
+      [DRUM_MIDI.snare, 1],
+      [DRUM_MIDI.ghostSnare, 1.75],
+      [DRUM_MIDI.openHat, 3.5],
+    ]);
+    song = toggleDrumHit(song, layer.id, 'ghostSnare', 1.75);
+    expect((findAnyLayer(song, layer.id) as DrumLayer).events).toHaveLength(5);
   });
 
   it('play on the drum kit, count toward song length, and never toward the key', () => {

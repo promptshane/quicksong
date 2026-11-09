@@ -9,7 +9,7 @@ import { Timeline } from './Timeline';
 import { UndoRedo } from './UndoRedo';
 
 /**
- * Editor for a drum layer: place kick, snare and hi-hat hits on the grid, or
+ * Editor for a drum layer: place six independent drum sounds on the grid, or
  * repeat a phrase with an optional variation or gap. The pads below preview
  * each drum before placing it.
  */
@@ -51,12 +51,12 @@ export function DrumsEditor({ layerId }: { layerId: string }) {
 
       <div className="panel">
         <div className="panel-hint compact" data-testid="drum-hint">
-          Tap a square to add a hit; tap it again to remove it. Hold a hit to set how hard it is played.
+          Tap any sixteenth-note square to add or remove a beat. Hold a hit to set its velocity. Swipe to move through the song.
         </div>
         <DrumLoopControls layerId={layer.id} loop={layer.loop} />
         <div className="drum-pads">
           {DRUM_PIECES.map((p) => (
-            <button key={p.piece} className="btn drum-pad" onClick={() => auditionDrum(p.piece)} data-drum-pad={p.piece}>
+            <button key={p.piece} className="btn drum-pad" onClick={() => auditionDrum(p.piece)} data-drum-pad={p.piece} data-drum-piece={p.piece}>
               {p.label}
             </button>
           ))}
